@@ -47,7 +47,11 @@ impl ErrorBlock {
     }
 
     /// Writes the error block directly to a writer.
-    pub fn write_to(&self, console: Console, writer: &mut impl Write) -> std::io::Result<()> {
+    pub fn write_to(
+        &self,
+        console: Console,
+        writer: &mut (impl Write + ?Sized),
+    ) -> std::io::Result<()> {
         Verdict::Failed.write_to(console, &self.heading, writer)?;
         writeln!(writer)?;
 

@@ -73,7 +73,7 @@ impl Verdict {
         self,
         console: Console,
         message: &str,
-        writer: &mut impl Write,
+        writer: &mut (impl Write + ?Sized),
     ) -> std::io::Result<()> {
         let sym = self.symbol(console.symbol_theme());
         console.write_paint(self.tone(), sym, writer)?;

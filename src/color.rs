@@ -99,7 +99,7 @@ impl Console {
         self,
         tone: Tone,
         value: impl Display,
-        writer: &mut impl Write,
+        writer: &mut (impl Write + ?Sized),
     ) -> std::io::Result<()> {
         if !self.color {
             write!(writer, "{value}")
