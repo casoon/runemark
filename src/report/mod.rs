@@ -332,7 +332,11 @@ impl Report {
     }
 
     /// Writes the report formatted directly to a writer.
-    pub fn write_to(&self, console: Console, writer: &mut impl Write) -> std::io::Result<()> {
+    pub fn write_to(
+        &self,
+        console: Console,
+        writer: &mut (impl Write + ?Sized),
+    ) -> std::io::Result<()> {
         // 1. Header & Verdict Line
         self.verdict.write_to(console, &self.title, writer)?;
         writeln!(writer)?;
@@ -541,6 +545,18 @@ mod tests {
         assert!(output.contains("Warnings: 2"));
         assert!(output.contains("* Performance Warnings (1)"));
         assert!(output.contains("- Large image uncompressed"));
+    }
+
+    #[test]
+    fn report_writes_to_a_trait_object_writer() {
+        let report = Report::new("Audit", Verdict::Passed);
+        let console = Console::new(ColorMode::Never, false);
+        let mut output = Vec::new();
+        let writer: &mut dyn Write = &mut output;
+
+        report.write_to(console, writer).unwrap();
+
+        assert_eq!(String::from_utf8(output).unwrap(), "[OK] Audit\n\n");
     }
 
     #[test]
