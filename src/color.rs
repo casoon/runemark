@@ -5,6 +5,7 @@ use std::io::{IsTerminal, Write};
 
 /// Controls whether semantic ANSI styles are emitted.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ColorMode {
     /// Emit styles only for an interactive terminal and when `NO_COLOR` is unset.
     #[default]
@@ -18,8 +19,12 @@ pub enum ColorMode {
 impl ColorMode {
     /// Resolves this policy for a specific output stream capability.
     pub fn enabled(self, is_terminal: bool) -> bool {
+        self.enabled_with(is_terminal, std::env::var_os("NO_COLOR").is_none())
+    }
+
+    fn enabled_with(self, is_terminal: bool, no_color_unset: bool) -> bool {
         match self {
-            Self::Auto => is_terminal && std::env::var_os("NO_COLOR").is_none(),
+            Self::Auto => is_terminal && no_color_unset,
             Self::Always => true,
             Self::Never => false,
         }
@@ -28,6 +33,7 @@ impl ColorMode {
 
 /// Semantic emphasis independent of a concrete terminal color theme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Tone {
     Title,
     Muted,
@@ -39,11 +45,12 @@ pub enum Tone {
 
 /// Symbol output mode for icons (Unicode vs ASCII fallback).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum SymbolTheme {
     /// Use modern UTF-8 symbols (✓, ⚠, ✖, ℹ, etc.)
     #[default]
     Unicode,
-    /// Use ASCII fallbacks for plain or legacy environments ([OK], [WARN], [FAIL], [INFO])
+    /// Use ASCII fallbacks for plain or legacy environments (`[OK]`, `[WARN]`, `[FAIL]`, `[INFO]`)
     Ascii,
 }
 
@@ -118,8 +125,60 @@ impl Console {
 
     /// Styles a value according to Runemark's semantic theme into a String.
     pub fn paint(self, tone: Tone, value: impl Display) -> String {
-        let mut buf = Vec::new();
-        let _ = self.write_paint(tone, &value, &mut buf);
-        String::from_utf8(buf).unwrap_or_else(|_| value.to_string())
+        crate::internal::collect_to_string(|buf| self.write_paint(tone, &value, buf))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_mode_always_and_never_ignore_the_terminal() {
+        assert!(ColorMode::Always.enabled(false));
+        assert!(!ColorMode::Never.enabled(true));
+    }
+
+    #[test]
+    fn color_mode_auto_requires_a_terminal() {
+        assert!(!ColorMode::Auto.enabled(false));
+    }
+
+    #[test]
+    fn color_mode_auto_honours_no_color() {
+        assert!(!ColorMode::Auto.enabled_with(true, false));
+        assert!(ColorMode::Auto.enabled_with(true, true));
+    }
+
+    #[test]
+    fn console_disabled_color_falls_back_to_ascii_theme() {
+        let console = Console::new(ColorMode::Never, true);
+        assert!(!console.color_enabled());
+        assert_eq!(console.symbol_theme(), SymbolTheme::Ascii);
+    }
+
+    #[test]
+    fn console_enabled_color_defaults_to_unicode_theme() {
+        let console = Console::new(ColorMode::Always, false);
+        assert!(console.color_enabled());
+        assert_eq!(console.symbol_theme(), SymbolTheme::Unicode);
+    }
+
+    #[test]
+    fn with_theme_overrides_the_default_theme() {
+        let console = Console::new(ColorMode::Always, false).with_theme(SymbolTheme::Ascii);
+        assert_eq!(console.symbol_theme(), SymbolTheme::Ascii);
+    }
+
+    #[test]
+    fn paint_returns_plain_text_when_color_is_disabled() {
+        let console = Console::new(ColorMode::Never, false);
+        assert_eq!(console.paint(Tone::Error, "boom"), "boom");
+    }
+
+    #[test]
+    fn paint_wraps_the_value_in_ansi_codes_when_color_is_enabled() {
+        let console = Console::new(ColorMode::Always, false);
+        assert_eq!(console.paint(Tone::Error, "boom"), "\x1b[1;91mboom\x1b[0m");
     }
 }

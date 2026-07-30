@@ -6,6 +6,7 @@ use std::io::Write;
 
 /// A structured error or prerequisite block providing actionable remedies.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ErrorBlock {
     /// Heading or summary of the prerequisite / error.
     pub heading: String,
@@ -56,9 +57,7 @@ impl ErrorBlock {
         writeln!(writer)?;
 
         if let Some(ref exp) = self.explanation {
-            write!(writer, "  ")?;
-            console.write_paint(Tone::Muted, exp, writer)?;
-            writeln!(writer)?;
+            crate::internal::write_toned_line("  ", console, Tone::Muted, exp, writer)?;
         }
 
         if let Some(ref remedy) = self.remedy {
@@ -71,9 +70,13 @@ impl ErrorBlock {
         if !self.commands.is_empty() {
             writeln!(writer)?;
             for cmd in &self.commands {
-                write!(writer, "  ")?;
-                console.write_paint(Tone::Info, format!("$ {cmd}"), writer)?;
-                writeln!(writer)?;
+                crate::internal::write_toned_line(
+                    "  ",
+                    console,
+                    Tone::Info,
+                    format!("$ {cmd}"),
+                    writer,
+                )?;
             }
         }
 
@@ -82,9 +85,7 @@ impl ErrorBlock {
 
     /// Renders the error block as a formatted String.
     pub fn render(&self, console: Console) -> String {
-        let mut buf = Vec::new();
-        let _ = self.write_to(console, &mut buf);
-        String::from_utf8(buf).unwrap_or_default()
+        crate::internal::collect_to_string(|buf| self.write_to(console, buf))
     }
 }
 

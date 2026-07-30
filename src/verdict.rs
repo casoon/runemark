@@ -5,6 +5,7 @@ use std::io::Write;
 
 /// The outcome status of a CLI command, audit run, or validation pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Verdict {
     /// Operation completed successfully with no findings or issues.
     Passed,
@@ -82,9 +83,7 @@ impl Verdict {
 
     /// Renders a verdict line formatted with symbol, optional label, and message as a String.
     pub fn render(self, console: Console, message: &str) -> String {
-        let mut buf = Vec::new();
-        let _ = self.write_to(console, message, &mut buf);
-        String::from_utf8(buf).unwrap_or_else(|_| message.to_string())
+        crate::internal::collect_to_string(|buf| self.write_to(console, message, buf))
     }
 }
 

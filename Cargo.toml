@@ -1,6 +1,6 @@
 [package]
 name = "runemark"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Opinionated terminal presentation for Rust command-line tools"
@@ -10,3 +10,10 @@ repository = "https://github.com/casoon/runemark"
 keywords = ["cli", "terminal", "reporting", "progress", "output"]
 categories = ["command-line-interface", "command-line-utilities"]
 exclude = ["todo.md"]
+
+[features]
+progress = ["dep:indicatif"]
+
+[dependencies]
+unicode-width = "0.2"
+indicatif = { version = "0.17", optional = true }

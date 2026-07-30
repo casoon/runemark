@@ -6,8 +6,10 @@ use std::path::PathBuf;
 
 /// A location within a file, document, or remote resource.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Location {
     /// Local file path with optional line and column numbers.
+    #[non_exhaustive]
     File {
         path: PathBuf,
         line: Option<usize>,

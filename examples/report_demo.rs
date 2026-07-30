@@ -63,8 +63,7 @@ fn main() {
     print!("{}", report.render(console));
 
     println!("=== 4. Detailed Report View ===");
-    let mut detailed_report = report;
-    detailed_report.detail_level = DetailLevel::Detailed;
+    let detailed_report = report.with_detail_level(DetailLevel::Detailed);
     print!("{}", detailed_report.render(console));
 
     println!("=== 5. Generator Diff View ===");
