@@ -6,7 +6,7 @@ Runemark gives related CLI tools one consistent way to communicate progress,
 status, findings, and next steps. It owns presentation conventions—not command
 parsing, logging, domain models, or machine-readable report formats.
 
-> Status: `0.1` is the initial public release. The API remains intentionally
+> Status: `0.2` is in preparation. The API remains intentionally
 > small while it is validated in real CLI tools.
 
 ## What it provides
@@ -25,7 +25,7 @@ Runemark is the shared presentation layer for those concerns:
 - Report models for verdicts, summary metrics, finding groups, and next steps.
 - Actionable error blocks, file-change previews, and clickable locations for
   compatible terminals.
-- No runtime dependencies.
+- Small core dependency footprint; `indicatif` is optional for progress bars.
 
 ## Install
 
@@ -66,6 +66,43 @@ let report = Report::new("Site audit", Verdict::Warning).add_group(
 );
 
 print!("{}", report.render(runemark::Console::stdout(runemark::ColorMode::Auto)));
+```
+
+### Adaptive layout
+
+Applications can provide a known terminal width without giving Runemark access
+to their terminal environment. Narrow layouts stack summary metrics and wrap
+finding messages with a hanging indent.
+
+```rust
+use runemark::{ColorMode, Console, RenderOptions, Report, Verdict};
+
+# let report = Report::new("Site audit", Verdict::Info);
+
+let output = report.render_with_options(
+    Console::stdout(ColorMode::Auto),
+    RenderOptions::new().with_width(80),
+);
+```
+
+### Progress
+
+The optional `progress` feature adds an `indicatif`-backed terminal progress
+sink. `Auto` uses a compact, line-oriented lifecycle when output is redirected,
+so machine-readable stdout remains clean.
+
+```rust
+use runemark::{ColorMode, Console, ProgressMode, ProgressSink, TerminalProgress, Verdict};
+use std::io::IsTerminal;
+
+let progress = TerminalProgress::stderr(
+    ProgressMode::Auto,
+    Console::stderr(ColorMode::Auto),
+    std::io::stderr().is_terminal(),
+);
+progress.start(10, "Auditing URLs");
+progress.advance(1, "https://example.com");
+progress.finish(Verdict::Passed, "Audit complete");
 ```
 
 ## Design boundaries

@@ -47,6 +47,14 @@ jobs:
           components: clippy
       - run: cargo clippy --all-targets --all-features -- -D warnings
 
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+
   package:
     name: Package
     runs-on: ubuntu-latest

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 /// The action taken on a file by a scaffolder, generator, or auto-fixer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FileAction {
     /// File was created.
     Added,
@@ -48,6 +49,7 @@ impl FileAction {
 
 /// A record of a single file modification.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct FileChange {
     pub path: PathBuf,
     pub action: FileAction,
@@ -73,6 +75,7 @@ impl FileChange {
 
 /// A block rendering generator or fixer file changes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct DiffBlock {
     pub changes: Vec<FileChange>,
 }
