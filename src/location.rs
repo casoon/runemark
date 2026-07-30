@@ -24,6 +24,15 @@ pub enum Location {
 }
 
 impl Location {
+    /// Creates a file location without a line or column number.
+    pub fn file(path: impl Into<PathBuf>) -> Self {
+        Self::File {
+            path: path.into(),
+            line: None,
+            column: None,
+        }
+    }
+
     /// Creates a file location with line and optional column.
     pub fn file_line(path: impl Into<PathBuf>, line: usize) -> Self {
         Self::File {

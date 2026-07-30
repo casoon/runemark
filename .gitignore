@@ -1,2 +1,9 @@
 /target/
+**/target/
+**/node_modules/
+**/*.node
+bindings/node/native.cjs
+bindings/node/native.d.ts
+packages/runemark/native.cjs
+packages/runemark/native.d.ts
 /todo.md

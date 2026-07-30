@@ -1,0 +1,41 @@
+{
+  "name": "@casoon/runemark",
+  "version": "0.3.0",
+  "description": "Native Node.js terminal presentation powered by Runemark",
+  "license": "MIT",
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "files": [
+    "README.md",
+    "index.cjs",
+    "index.d.ts",
+    "native.cjs",
+    "runemark.*.node"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/casoon/runemark.git"
+  },
+  "scripts": {
+    "build": "napi build --release --platform --manifest-path ../../bindings/node/Cargo.toml --package-json-path package.json --output-dir ../../packages/runemark --js native.cjs --dts native.d.ts",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "pack:check": "npm pack --dry-run --ignore-scripts"
+  },
+  "napi": {
+    "binaryName": "runemark",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-gnu"
+    ]
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.5.1"
+  }
+}

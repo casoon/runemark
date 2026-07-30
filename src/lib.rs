@@ -23,7 +23,7 @@ pub use error_block::ErrorBlock;
 pub use location::{Location, format_osc8};
 pub use progress::{PlainProgress, ProgressMode, ProgressSink, SilentProgress, TerminalProgress};
 pub use report::{
-    Badge, Confidence, DetailLevel, Finding, FindingGroup, Metric, NextStep, Report, ScopeNote,
-    Trend, Vocabulary,
+    Badge, Confidence, DetailLevel, Finding, FindingGroup, Metric, NextStep, RenderOptions, Report,
+    ScopeNote, Trend, Vocabulary,
 };
 pub use verdict::Verdict;

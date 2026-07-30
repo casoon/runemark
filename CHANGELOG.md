@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-30
+
+### Added
+
+- Native Node.js bindings and the `@casoon/runemark` TypeScript package.
+- A versioned, object-oriented Node API that accepts plain data objects while
+  keeping Rust presentation models internal.
+
+## [0.2.0] - 2026-07-30
+
 ### Changed
 
 - Public presentation types are now non-exhaustive so Runemark can extend its
