@@ -33,7 +33,8 @@ const uid = `install-${commands.map((c) => c.label.replace(/\W/g, '')).join('-')
         <span class="prompt" aria-hidden="true">
           $
         </span>
-        <code id={`${uid}-cmd-${i}`}>{c.command}</code>
+        {/* Long commands scroll horizontally; tabindex keeps the region keyboard-reachable. */}
+        <code id={`${uid}-cmd-${i}`} tabindex="0">{c.command}</code>
         <button class="copy" type="button" data-copy={`${uid}-cmd-${i}`} hidden>
           Copy
         </button>
