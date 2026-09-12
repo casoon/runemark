@@ -1,0 +1,106 @@
+---
+import {
+  Badge,
+  Badges,
+  BuildOutput,
+  CodeBlock,
+  Facts,
+  Features,
+  Hero,
+  Install,
+  Quickstart,
+  Terminal,
+} from '@casoon/pages-theme/components';
+import Base from '@casoon/pages-theme/layouts/Base.astro';
+import { ansi, hero } from '../showcase';
+
+const rust = `use runemark::{ColorMode, Console, Tone, Verdict};
+
+let console = Console::stdout(ColorMode::Auto);
+
+println!("{}", console.paint(Tone::Title, "site audit"));
+println!("{}", Verdict::Warning.render(console, "3 findings need review"));
+println!("{}", console.paint(Tone::Muted, "Run with --details for every finding."));`;
+
+const node = `const { RunemarkConsole, renderReport } = require('@casoon/runemark')
+
+const console = new RunemarkConsole({ color: 'auto' })
+console.writeWarning('3 findings need review')
+
+process.stdout.write(renderReport({
+  schemaVersion: 1,
+  title: 'Site audit',
+  verdict: 'warning',
+}, { width: process.stdout.columns }))`;
+---
+
+<Base>
+  <Hero
+    title="One way for your CLI tools to talk."
+    lead="runemark renders status lines, reports, error blocks and file-change previews with one colour policy: TTY-aware, NO_COLOR-compliant, plain when redirected. The crate and the npm package share the same Rust renderer."
+  >
+    <Install
+      commands={[
+        { label: 'cargo', command: 'cargo add runemark' },
+        { label: 'npm', command: 'npm install @casoon/runemark' },
+      ]}
+    />
+    <Badges>
+      <Badge>MIT</Badge>
+      <Badge>crates.io 0.3.1</Badge>
+      <Badge>npm 0.3.1</Badge>
+      <Badge>Rust 1.85+</Badge>
+      <Badge>Node 20+</Badge>
+    </Badges>
+    <Terminal slot="output" title="site audit" dots ansi={hero} />
+  </Hero>
+
+  <Facts
+    items={[
+      { value: '1', label: 'required dependency (unicode-width)' },
+      { value: '6', label: 'prebuilt Node platforms' },
+      { value: '1.85', label: 'minimum Rust version' },
+      { value: '2', label: 'ecosystems, one renderer' },
+    ]}
+  />
+
+  <Features
+    items={[
+      {
+        title: 'Semantic, not cosmetic',
+        body: 'Callers say what a line means – success, warning, error, a verdict, a finding. runemark decides how it looks, so related tools read the same.',
+      },
+      {
+        title: 'Predictable colour policy',
+        body: 'Auto emits styles only to an interactive terminal and honours NO_COLOR; Always and Never are explicit. Redirected output stays plain and deterministic.',
+      },
+      {
+        title: 'Reports that fit the terminal',
+        body: 'Compact or detailed, with metrics, grouped findings and next steps. Given a width, narrow layouts stack metrics and wrap messages with a hanging indent.',
+      },
+      {
+        title: 'Safe with untrusted text',
+        body: 'Control characters in messages, paths and URLs are neutralised; hyperlinks are only emitted for http and https targets.',
+      },
+    ]}
+  />
+
+  <BuildOutput
+    caption="Every terminal on this site is rendered by @casoon/runemark during the build – the same renderer as the crate. No screenshots."
+    file="site/src/showcase.ts"
+  >
+    <Terminal ansi={ansi['report-detailed']} />
+  </BuildOutput>
+
+  <Quickstart
+    lead="Three steps from install to consistent output. The full walkthrough lives in the documentation."
+    steps={[
+      'Add the crate or the npm package to your command-line tool.',
+      'Pick a colour mode – <code>Auto</code> is right for most tools.',
+      'Pass your own data to semantic lines, reports, error blocks or diffs.',
+    ]}
+  >
+    <CodeBlock code={rust} lang="rust" title="main.rs" label="Rust" />
+    <CodeBlock code={node} lang="js" title="audit.cjs" label="Node" />
+  </Quickstart>
+</Base>

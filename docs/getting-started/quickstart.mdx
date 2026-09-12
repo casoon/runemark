@@ -1,0 +1,95 @@
+---
+title: Quickstart
+description: Print semantic lines, a verdict and a small report – in Rust and in Node.
+order: 2
+---
+
+## Semantic lines and verdicts
+
+<Tabs
+  label="Language"
+  tabs={[
+    { id: 'rust', label: 'Rust' },
+    { id: 'node', label: 'Node' },
+  ]}
+>
+<div slot="rust">
+
+```rust
+use runemark::{ColorMode, Console, Tone, Verdict};
+
+let console = Console::stdout(ColorMode::Auto);
+
+println!("{}", console.paint(Tone::Title, "site audit"));
+println!("{}", console.paint(Tone::Warning, "3 findings need review"));
+println!("{}", Verdict::Passed.render(console, "Configuration validated cleanly"));
+```
+
+</div>
+<div slot="node">
+
+```js
+const { RunemarkConsole, renderStatus } = require('@casoon/runemark')
+
+const console = new RunemarkConsole({ color: 'auto' })
+
+console.writeInfo('Starting site audit')
+console.writeWarning('3 findings need review')
+process.stdout.write(`${renderStatus('passed', 'Configuration validated cleanly')}\n`)
+```
+
+</div>
+</Tabs>
+
+`Auto` emits styles only to an interactive terminal and honours `NO_COLOR`. Use `Never` in tests
+and snapshots. See [Colour policy](../../guides/colour-policy/).
+
+## A first report
+
+Reports are built from your own data. runemark never defines domain-specific finding types.
+
+<Tabs
+  label="Language"
+  tabs={[
+    { id: 'rust', label: 'Rust' },
+    { id: 'node', label: 'Node' },
+  ]}
+>
+<div slot="rust">
+
+```rust
+use runemark::{ColorMode, Console, Finding, FindingGroup, Report, Tone, Verdict};
+
+let report = Report::new("Site audit", Verdict::Warning).add_group(
+    FindingGroup::new("Accessibility")
+        .add_finding(Finding::new(Tone::Warning, "Image has no text alternative")),
+);
+
+print!("{}", report.render(Console::stdout(ColorMode::Auto)));
+```
+
+</div>
+<div slot="node">
+
+```js
+const { RunemarkReport } = require('@casoon/runemark')
+
+const report = new RunemarkReport({
+  schemaVersion: 1,
+  title: 'Site audit',
+  verdict: 'warning',
+  groups: [
+    {
+      title: 'Accessibility',
+      findings: [{ message: 'Image has no text alternative', tone: 'warning' }],
+    },
+  ],
+})
+
+process.stdout.write(report.render({ color: 'auto', width: process.stdout.columns }))
+```
+
+</div>
+</Tabs>
+
+Next: the [Reports guide](../../guides/reports/) covers metrics, detail levels and widths.

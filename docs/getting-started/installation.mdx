@@ -1,0 +1,65 @@
+---
+title: Installation
+description: runemark ships as a Rust crate and as a native Node.js package. Both use the same Rust renderer, so output matches across ecosystems.
+order: 1
+---
+
+<Tabs
+  label="Ecosystem"
+  tabs={[
+    { id: 'rust', label: 'Rust' },
+    { id: 'node', label: 'Node' },
+  ]}
+>
+<div slot="rust">
+
+```sh
+cargo add runemark
+
+# with the terminal progress sink (adds indicatif)
+cargo add runemark --features progress
+```
+
+</div>
+<div slot="node">
+
+```sh
+npm install @casoon/runemark
+```
+
+```js
+const { RunemarkConsole } = require('@casoon/runemark')
+```
+
+</div>
+</Tabs>
+
+## Requirements
+
+| Runtime | Minimum | Notes |
+| --- | --- | --- |
+| Rust (crate) | `1.85` | Edition 2024. One required dependency, `unicode-width`. |
+| Node.js | `20` | Node-API 8. CommonJS package with TypeScript declarations. |
+
+## Node platforms
+
+The npm package contains prebuilt native binaries. Each one is built and smoke-tested in CI before
+a release.
+
+| Platform | Binary |
+| --- | --- |
+| macOS, Apple silicon | `darwin-arm64` |
+| macOS, Intel | `darwin-x64` |
+| Windows x64 | `win32-x64-msvc` |
+| Linux x64, glibc 2.17 or newer | `linux-x64-gnu` |
+| Linux x64, musl (Alpine) | `linux-x64-musl` |
+| Linux arm64, glibc 2.17 or newer | `linux-arm64-gnu` |
+
+<Callout type="caution">
+  Use `@casoon/runemark` 0.3.1 or newer. Version 0.3.0 on npm contained only the macOS arm64
+  binary.
+</Callout>
+
+## Next steps
+
+Continue with the [Quickstart](../quickstart/).

@@ -1,0 +1,97 @@
+---
+title: Reports
+description: A verdict, summary metrics, grouped findings and next steps – rendered compact or detailed from your own data.
+order: 2
+---
+
+## Building blocks
+
+| Part | Rust | Node (`ReportInput`) |
+| --- | --- | --- |
+| Title and verdict | `Report::new(title, Verdict)` | `title`, `verdict` |
+| Summary metrics, optional trend | `Metric::new(key, value).with_trend(Trend, delta)` | `metrics: [{ key, value, tone, trend, delta }]` |
+| Finding groups | `FindingGroup::new(title).add_finding(…)` | `groups: [{ title, findings, totalCount, advisory }]` |
+| Findings | `Finding::new(Tone, message)` with rule ID, location, remedy, confidence, badge | `{ message, tone, ruleId, location, remedy, confidence, badge }` |
+| Next steps | `NextStep::new(text).with_command(cmd)` | `nextSteps: [{ text, command }]` |
+| Scope notes | `ScopeNote::new(title, notes)` | – |
+
+Verdicts: `passed`, `warning`, `failed`, `action-required`, `skipped`, `info`.
+
+## Example
+
+<Tabs
+  label="Language"
+  tabs={[
+    { id: 'rust', label: 'Rust' },
+    { id: 'node', label: 'Node' },
+  ]}
+>
+<div slot="rust">
+
+```rust
+use runemark::{
+    ColorMode, Console, Finding, FindingGroup, Location, Metric, NextStep, Report, Tone, Trend,
+    Verdict,
+};
+
+let report = Report::new("Site audit v1.2.0", Verdict::Warning)
+    .add_metric(Metric::new("Warnings", "4").with_trend(Trend::Negative, "+2"))
+    .add_group(
+        FindingGroup::new("Accessibility violations").add_finding(
+            Finding::new(Tone::Warning, "Image missing alt attribute")
+                .with_rule_id("a11y/img-alt")
+                .with_location(Location::file_line_col("src/pages/index.astro", 42, 10))
+                .with_remedy("Add alt=\"…\" to the <img> tag"),
+        ),
+    )
+    .add_next_step(NextStep::new("Run the auto-fixer").with_command("audit --fix"));
+
+print!("{}", report.render(Console::stdout(ColorMode::Auto)));
+```
+
+</div>
+<div slot="node">
+
+```js
+const { renderReport } = require('@casoon/runemark')
+
+process.stdout.write(renderReport({
+  schemaVersion: 1,
+  title: 'Site audit v1.2.0',
+  verdict: 'warning',
+  metrics: [{ key: 'Warnings', value: '4', trend: 'negative', delta: '+2' }],
+  groups: [{
+    title: 'Accessibility violations',
+    findings: [{
+      message: 'Image missing alt attribute',
+      tone: 'warning',
+      ruleId: 'a11y/img-alt',
+      location: { kind: 'file', value: 'src/pages/index.astro', line: 42, column: 10 },
+      remedy: 'Add alt="…" to the <img> tag',
+    }],
+  }],
+  nextSteps: [{ text: 'Run the auto-fixer', command: 'audit --fix' }],
+}, { width: process.stdout.columns }))
+```
+
+</div>
+</Tabs>
+
+The rendered result, in colour, is in the [showcase](../../../showcase/report-compact/).
+
+## Compact and detailed
+
+The compact form is a decision view: verdict, metrics and a limited number of sample findings per
+group. The detailed form lists every provided finding with its rule ID, location and remedy.
+
+- Rust: `report.with_detail_level(DetailLevel::Detailed)`
+- Node: `detailLevel: 'detailed'`; `maxCompactSamples` sets how many findings the compact form shows
+
+When a group's `totalCount` is larger than the findings you pass, the report says so instead of
+implying a complete list.
+
+## Locations
+
+Locations are files (with optional line and column), URLs, selectors or artifacts. In terminals
+that support OSC 8, `http` and `https` URLs become clickable links; see
+[Security](../security/) for how targets are validated.

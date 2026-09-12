@@ -1,0 +1,91 @@
+---
+title: Errors and file changes
+description: Actionable error blocks and previews of generated or changed files.
+order: 3
+---
+
+## Error blocks
+
+An error block says what went wrong, why, and what to run next.
+
+<Tabs
+  label="Language"
+  tabs={[
+    { id: 'rust', label: 'Rust' },
+    { id: 'node', label: 'Node' },
+  ]}
+>
+<div slot="rust">
+
+```rust
+use runemark::{ColorMode, Console, ErrorBlock};
+
+let block = ErrorBlock::new("Required toolchain is unavailable")
+    .with_explanation("The configured version is not installed.")
+    .with_remedy("Install the required toolchain:")
+    .add_command("toolchain install stable");
+
+eprint!("{}", block.render(Console::stderr(ColorMode::Auto)));
+```
+
+</div>
+<div slot="node">
+
+```js
+const { renderError } = require('@casoon/runemark')
+
+process.stderr.write(renderError({
+  heading: 'Required toolchain is unavailable',
+  explanation: 'The configured version is not installed.',
+  remedy: 'Install the required toolchain:',
+  commands: ['toolchain install stable'],
+}))
+```
+
+</div>
+</Tabs>
+
+## File changes
+
+Generators and fixers can summarise what they wrote. Actions: added, modified, deleted, renamed;
+each change can carry a short delta such as a size.
+
+<Tabs
+  label="Language"
+  tabs={[
+    { id: 'rust', label: 'Rust' },
+    { id: 'node', label: 'Node' },
+  ]}
+>
+<div slot="rust">
+
+```rust
+use runemark::{ColorMode, Console, DiffBlock, FileAction, FileChange};
+
+let diff = DiffBlock::new()
+    .add_change(FileChange::new(FileAction::Added, "src/components/Footer.astro").with_delta("+1.2 kB"))
+    .add_change(FileChange::new(FileAction::Modified, "src/layouts/Layout.astro"))
+    .add_change(FileChange::new(FileAction::Deleted, "src/legacy/Footer.jsx"));
+
+print!("{}", diff.render(Console::stdout(ColorMode::Auto)));
+```
+
+</div>
+<div slot="node">
+
+```js
+const { renderDiff } = require('@casoon/runemark')
+
+process.stdout.write(renderDiff({
+  changes: [
+    { action: 'added', path: 'src/components/Footer.astro', delta: '+1.2 kB' },
+    { action: 'modified', path: 'src/layouts/Layout.astro' },
+    { action: 'deleted', path: 'src/legacy/Footer.jsx' },
+  ],
+}))
+```
+
+</div>
+</Tabs>
+
+Both outputs are rendered in the [showcase](../../../showcase/).
