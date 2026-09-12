@@ -9,7 +9,7 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "3.12", default-features = false, features = ["napi8"] }
+napi = { version = "3.12", default-features = false, features = ["napi8", "dyn-symbols"] }
 napi-derive = "3.6"
 runemark = { path = "../..", version = "0.3.1", features = ["progress"] }
 

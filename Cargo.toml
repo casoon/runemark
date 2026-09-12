@@ -9,7 +9,7 @@ documentation = "https://docs.rs/runemark"
 repository = "https://github.com/casoon/runemark"
 keywords = ["cli", "terminal", "reporting", "progress", "output"]
 categories = ["command-line-interface", "command-line-utilities"]
-exclude = ["todo.md", "bindings/**", "packages/**", "plan/**", "scripts/**", ".cargo/**"]
+exclude = ["todo.md", "bindings/**", "packages/**", "plan/**", "scripts/**"]
 
 [features]
 progress = ["dep:indicatif"]
