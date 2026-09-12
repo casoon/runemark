@@ -69,12 +69,19 @@ jobs:
       - name: Install dependencies
         working-directory: packages/runemark
         run: npm ci
-      - name: Install musl dependencies
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build native binary
+        if: matrix.target != 'x86_64-unknown-linux-musl'
         working-directory: packages/runemark
         run: npx napi build --release --target ${{ matrix.target }} ${{ matrix.build-args }} --platform --manifest-path ../../bindings/node/Cargo.toml --package-json-path package.json --output-dir ../../packages/runemark --js native.cjs --dts native.d.ts
+      # Build on a musl host: cross-linking from the glibc runner produces a binary
+      # that needs the glibc loader (ld-linux-x86-64.so.2) and fails on Alpine.
+      - name: Build native binary (Alpine container)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: >-
+          docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/packages/runemark rust:1.88-alpine
+          sh -c "apk add --no-cache nodejs npm gcc musl-dev
+          && npm ci
+          && npx napi build --release --target x86_64-unknown-linux-musl --platform --manifest-path ../../bindings/node/Cargo.toml --package-json-path package.json --output-dir ../../packages/runemark --js native.cjs --dts native.d.ts"
       - name: Runtime smoke test (host native)
         if: runner.os != 'Linux'
         working-directory: packages/runemark
