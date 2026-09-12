@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Narrow report layouts now wrap a finding's rule ID, confidence and location
+  onto continuation lines with the hanging indent instead of overflowing the
+  given width.
+
 ## [0.3.1] - 2026-09-12
 
 ### Added

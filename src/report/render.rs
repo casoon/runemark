@@ -246,6 +246,9 @@ impl Report {
     }
 }
 
+/// Hanging indent for wrapped finding lines.
+const CONTINUATION: &str = "    ";
+
 /// A single finding line: message, optional badge/rule/confidence/location,
 /// and (in detailed mode) an indented remedy line.
 fn write_finding(
@@ -262,30 +265,37 @@ fn write_finding(
         message_start_width += display_width(&format!("[{}] ", b.label));
     }
 
-    if let Some(width) = width {
+    let mut line_width = if let Some(width) = width {
         write_wrapped_toned_text(
             console,
             f.tone,
             &f.message,
             width,
             message_start_width,
-            "    ",
+            CONTINUATION,
             writer,
-        )?;
+        )?
     } else {
         console.write_paint(f.tone, &f.message, writer)?;
-    }
+        message_start_width + display_width(&f.message)
+    };
 
     if let Some(ref r) = f.rule_id {
-        write_toned_suffix(console, Tone::Muted, format!("[{r}]"), writer)?;
+        let rule = format!("[{r}]");
+        line_width = start_suffix(line_width, display_width(&rule), width, writer)?;
+        console.write_paint(Tone::Muted, rule, writer)?;
     }
 
     if let Some(ref conf) = f.confidence {
-        write_toned_suffix(console, Tone::Muted, format!("({})", conf.label()), writer)?;
+        let confidence = format!("({})", conf.label());
+        line_width = start_suffix(line_width, display_width(&confidence), width, writer)?;
+        console.write_paint(Tone::Muted, confidence, writer)?;
     }
 
     if let Some(ref loc) = f.location {
-        write!(writer, " at {}", loc.render(console))?;
+        let location_width = display_width("at ") + display_width(&loc.to_plain_string());
+        start_suffix(line_width, location_width, width, writer)?;
+        write!(writer, "at {}", loc.render(console))?;
     }
     writeln!(writer)?;
 
@@ -332,6 +342,31 @@ fn metric_display_width(metric: &super::model::Metric) -> usize {
     display_width(&metric.key) + 2 + display_width(&metric.value) + delta_width
 }
 
+/// Starts a same-line suffix `suffix_width` columns wide: a space, or, when a width is
+/// known and the suffix would not fit, a line break with the hanging indent.
+/// Returns the line width after the suffix.
+fn start_suffix(
+    line_width: usize,
+    suffix_width: usize,
+    width: Option<usize>,
+    writer: &mut (impl Write + ?Sized),
+) -> std::io::Result<usize> {
+    let continuation_width = display_width(CONTINUATION);
+    match width {
+        Some(width) if width > continuation_width && line_width + 1 + suffix_width > width => {
+            writeln!(writer)?;
+            write!(writer, "{CONTINUATION}")?;
+            Ok(continuation_width + suffix_width)
+        }
+        _ => {
+            write!(writer, " ")?;
+            Ok(line_width + 1 + suffix_width)
+        }
+    }
+}
+
+/// Writes `text` word by word, wrapping at `width` with the `continuation` indent.
+/// Returns the width of the last line written.
 fn write_wrapped_toned_text(
     console: Console,
     tone: Tone,
@@ -340,10 +375,11 @@ fn write_wrapped_toned_text(
     first_line_width: usize,
     continuation: &str,
     writer: &mut (impl Write + ?Sized),
-) -> std::io::Result<()> {
+) -> std::io::Result<usize> {
     let continuation_width = display_width(continuation);
     if width <= continuation_width || first_line_width >= width {
-        return console.write_paint(tone, text, writer);
+        console.write_paint(tone, text, writer)?;
+        return Ok(first_line_width + display_width(text));
     }
 
     let mut line_width = first_line_width;
@@ -365,7 +401,7 @@ fn write_wrapped_toned_text(
         line_width += word_width;
         first_word = false;
     }
-    Ok(())
+    Ok(line_width)
 }
 
 fn display_width(text: &str) -> usize {
@@ -478,6 +514,29 @@ mod tests {
         let output = report.render_with_options(console, RenderOptions::new().with_width(20));
 
         assert!(output.contains("  - This message\n    needs wrapping"));
+    }
+
+    #[test]
+    fn narrow_layout_wraps_finding_metadata_with_a_hanging_indent() {
+        let report = Report::new("Audit", Verdict::Warning).add_group(
+            FindingGroup::new("Images").add_finding(
+                Finding::new(Tone::Warning, "Image missing alt")
+                    .with_rule_id("a11y/img-alt")
+                    .with_confidence(crate::Confidence::High)
+                    .with_location(crate::Location::file_line_col(
+                        "src/pages/index.astro",
+                        42,
+                        10,
+                    )),
+            ),
+        );
+        let console = Console::new(ColorMode::Never, false);
+
+        let output = report.render_with_options(console, RenderOptions::new().with_width(40));
+
+        assert!(output.contains(
+            "  - Image missing alt [a11y/img-alt]\n    (high confidence)\n    at src/pages/index.astro:42:10\n"
+        ));
     }
 
     #[test]
