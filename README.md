@@ -7,8 +7,8 @@ Runemark gives related CLI tools one consistent way to communicate progress,
 status, findings, and next steps. It owns presentation conventions—not command
 parsing, logging, domain models, or machine-readable report formats.
 
-> Status: `0.3` is in preparation. The API remains intentionally
-> small while it is validated in real CLI tools.
+> Status: `0.3` is released on crates.io and npm. The API remains
+> intentionally small while it is validated in real CLI tools.
 
 ## What it provides
 

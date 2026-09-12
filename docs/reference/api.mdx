@@ -1,0 +1,40 @@
+---
+title: API overview
+sidebarLabel: API overview
+description: The public surface at a glance. Item-level documentation for the crate lives on docs.rs; the Node types are in index.d.ts.
+order: 1
+---
+
+## Rust crate
+
+| Area | Items |
+| --- | --- |
+| Console and tones | `Console`, `ColorMode`, `Tone`, `SymbolTheme` |
+| Verdicts | `Verdict` |
+| Reports | `Report`, `RenderOptions`, `DetailLevel`, `Metric`, `Trend`, `FindingGroup`, `Finding`, `Badge`, `Confidence`, `NextStep`, `ScopeNote`, `Vocabulary` |
+| Locations | `Location`, `format_osc8` |
+| Errors and file changes | `ErrorBlock`, `DiffBlock`, `FileChange`, `FileAction` |
+| Progress | `ProgressSink`, `PlainProgress`, `SilentProgress`, `ProgressMode`, `TerminalProgress` (feature `progress`) |
+| Testing helpers | module `testing` |
+
+Every type and method is documented on [docs.rs/runemark](https://docs.rs/runemark); this page
+does not duplicate it.
+
+## Node package
+
+| Export | Kind | Purpose |
+| --- | --- | --- |
+| `RunemarkConsole` | class | Semantic text: `render`, `renderVerdict`, `success` … and `write*` |
+| `RunemarkReport` | class | An immutable report from a `ReportInput`; `render(options)` |
+| `RunemarkProgress` | class | Progress lifecycle: `start`, `advance`, `notice`, `finish` |
+| `renderStatus` | function | One verdict line |
+| `renderReport` | function | Report from a `ReportInput` |
+| `renderError` | function | Error block from an `ErrorBlockInput` |
+| `renderDiff` | function | File changes from a `DiffInput` |
+| `createProgress` | function | A `RunemarkProgress` writing to stderr |
+| `Verdict`, `Tone` | constants | The accepted string literals |
+
+Options: `color` (`auto` \| `always` \| `never`), `symbols` (`unicode` \| `ascii`), `isTerminal`,
+and for reports `width`. The full type definitions are in
+[index.d.ts](https://github.com/casoon/runemark/blob/main/packages/runemark/index.d.ts); the
+compatibility rules are in the [Node contract](../../guides/node-contract/).
