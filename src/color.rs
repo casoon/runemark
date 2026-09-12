@@ -101,15 +101,17 @@ impl Console {
         self.theme
     }
 
-    /// Writes styled text directly into a writer (zero-allocation writer-first API).
+    /// Writes styled, control-character-safe text directly into a writer.
     pub fn write_paint(
         self,
         tone: Tone,
         value: impl Display,
         writer: &mut (impl Write + ?Sized),
     ) -> std::io::Result<()> {
+        let text = value.to_string();
+        let sanitized = sanitize_visible_text(&text);
         if !self.color {
-            write!(writer, "{value}")
+            write!(writer, "{sanitized}")
         } else {
             let style = match tone {
                 Tone::Title => "\x1b[1;96m",
@@ -119,7 +121,7 @@ impl Console {
                 Tone::Warning => "\x1b[1;93m",
                 Tone::Error => "\x1b[1;91m",
             };
-            write!(writer, "{style}{value}\x1b[0m")
+            write!(writer, "{style}{sanitized}\x1b[0m")
         }
     }
 
@@ -127,6 +129,35 @@ impl Console {
     pub fn paint(self, tone: Tone, value: impl Display) -> String {
         crate::internal::collect_to_string(|buf| self.write_paint(tone, &value, buf))
     }
+}
+
+pub(crate) fn is_dangerous_control(ch: char) -> bool {
+    matches!(ch, '\x1b' | '\x07' | '\x7f' | '\u{0080}'..='\u{009f}')
+        || (ch.is_ascii_control() && !matches!(ch, '\n' | '\t'))
+}
+
+pub(crate) fn sanitize_visible_text(input: &str) -> std::borrow::Cow<'_, str> {
+    if !input.chars().any(is_dangerous_control) {
+        return std::borrow::Cow::Borrowed(input);
+    }
+
+    let mut sanitized = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if !is_dangerous_control(ch) {
+            sanitized.push(ch);
+        } else if ch == '\x1b' {
+            sanitized.push_str("^[");
+        } else if ch == '\x07' {
+            sanitized.push_str("^G");
+        } else if ch == '\x7f' {
+            sanitized.push_str("^?");
+        } else if ch.is_ascii_control() {
+            let caret_char = ((ch as u8) + b'@') as char;
+            sanitized.push('^');
+            sanitized.push(caret_char);
+        }
+    }
+    std::borrow::Cow::Owned(sanitized)
 }
 
 #[cfg(test)]
@@ -180,5 +211,25 @@ mod tests {
     fn paint_wraps_the_value_in_ansi_codes_when_color_is_enabled() {
         let console = Console::new(ColorMode::Always, false);
         assert_eq!(console.paint(Tone::Error, "boom"), "\x1b[1;91mboom\x1b[0m");
+    }
+
+    #[test]
+    fn paint_neutralizes_embedded_escape_sequences() {
+        let console = Console::new(ColorMode::Never, false);
+        let malicious = "\x1b[32mFake Green\x1b[0m\x07\x7f";
+        assert_eq!(
+            console.paint(Tone::Info, malicious),
+            "^[[32mFake Green^[[0m^G^?"
+        );
+    }
+
+    #[test]
+    fn paint_preserves_newlines_and_tabs_but_neutralizes_carriage_returns() {
+        let console = Console::new(ColorMode::Never, false);
+        let formatted = "Line 1\n\tIndented Line 2\r\nDone";
+        assert_eq!(
+            console.paint(Tone::Info, formatted),
+            "Line 1\n\tIndented Line 2^M\nDone"
+        );
     }
 }

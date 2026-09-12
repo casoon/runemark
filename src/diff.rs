@@ -1,6 +1,6 @@
 //! Diff and file generation preview components.
 
-use crate::color::{Console, SymbolTheme, Tone};
+use crate::color::{Console, SymbolTheme, Tone, sanitize_visible_text};
 use std::path::PathBuf;
 
 /// The action taken on a file by a scaffolder, generator, or auto-fixer.
@@ -99,13 +99,14 @@ impl DiffBlock {
             let sym = console.paint(c.action.tone(), c.action.symbol(console.symbol_theme()));
             let label = console.paint(c.action.tone(), c.action.label());
             let path_str = c.path.display().to_string();
+            let safe_path = sanitize_visible_text(&path_str);
             let delta_str = c
                 .delta
                 .as_deref()
                 .map(|d| console.paint(Tone::Muted, format!(" ({d})")))
                 .unwrap_or_default();
 
-            out.push_str(&format!("  {sym} {label:<6} {path_str}{delta_str}\n"));
+            out.push_str(&format!("  {sym} {label:<6} {safe_path}{delta_str}\n"));
         }
         out
     }

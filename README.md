@@ -1,12 +1,13 @@
 # runemark
 
-Opinionated, human-readable terminal presentation for Rust command-line tools.
+Opinionated, human-readable terminal presentation for Rust and Node.js
+command-line tools.
 
 Runemark gives related CLI tools one consistent way to communicate progress,
 status, findings, and next steps. It owns presentation conventions—not command
 parsing, logging, domain models, or machine-readable report formats.
 
-> Status: `0.2` is in preparation. The API remains intentionally
+> Status: `0.3` is in preparation. The API remains intentionally
 > small while it is validated in real CLI tools.
 
 ## What it provides
@@ -33,6 +34,12 @@ Add the core presentation layer to a Rust project:
 
 ```bash
 cargo add runemark
+```
+
+For Node.js 20 or newer, install the native package:
+
+```bash
+npm install @casoon/runemark
 ```
 
 ## Quick start
@@ -121,6 +128,23 @@ consumer needs rather than speculative abstractions:
 
 1. Validate the current API in real CLI tools before expanding it.
 
+## Examples
+
+Run the Rust examples directly from this repository:
+
+```bash
+cargo run --example report_demo
+cargo run --example progress_demo --features progress
+```
+
+Node.js examples are in [examples/node](examples/node). Build the local native
+package once, then run an example:
+
+```bash
+npm --prefix packages/runemark run build
+node examples/node/report.cjs
+```
+
 ## Development
 
 Run the complete local validation suite:
@@ -133,6 +157,8 @@ cargo package --locked
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for API and contribution guidelines.
+See [NODE_API.md](NODE_API.md) for the stable Node.js package contract.
+The npm package includes its own README with [Node.js examples](packages/runemark/README.md).
 
 ## License
 

@@ -233,7 +233,11 @@ impl Report {
             SymbolTheme::Ascii => "-",
         };
         for step in &self.next_steps {
-            writeln!(writer, "  {bullet} {}", step.text)?;
+            writeln!(
+                writer,
+                "  {bullet} {}",
+                crate::color::sanitize_visible_text(&step.text)
+            )?;
             if let Some(ref cmd) = step.command {
                 write_toned_line("    ", console, Tone::Info, format!("$ {cmd}"), writer)?;
             }
@@ -490,5 +494,85 @@ mod tests {
         let output = report.render(console);
 
         assert!(output.find("a-rule").unwrap() < output.find("z-rule").unwrap());
+    }
+
+    #[test]
+    fn max_compact_samples_boundary_testing() {
+        let make_report = |limit: usize| {
+            let mut group = FindingGroup::new("Issues");
+            for i in 0..5 {
+                group = group.add_finding(Finding::new(Tone::Warning, format!("Issue {i}")));
+            }
+            let mut r = Report::new("Audit", Verdict::Warning).add_group(group);
+            r.max_compact_samples = limit;
+            r
+        };
+
+        let console = Console::new(ColorMode::Never, false);
+
+        // Below count (4 of 5)
+        let out_4 = make_report(4).render(console);
+        assert!(out_4.contains("... 1 more finding(s) (use --details to view all)"));
+        assert!(out_4.contains("- Issue 3"));
+        assert!(!out_4.contains("- Issue 4"));
+
+        // Exactly at count (5 of 5)
+        let out_5 = make_report(5).render(console);
+        assert!(!out_5.contains("more finding(s)"));
+        assert!(out_5.contains("- Issue 4"));
+
+        // Above count (6 of 5)
+        let out_6 = make_report(6).render(console);
+        assert!(!out_6.contains("more finding(s)"));
+        assert!(out_6.contains("- Issue 4"));
+    }
+
+    #[test]
+    fn top_issues_threshold_boundary_testing() {
+        let make_report = |count: usize| {
+            let mut group = FindingGroup::new("Issues");
+            for i in 0..count {
+                group = group.add_finding(
+                    Finding::new(Tone::Warning, format!("Issue {i}")).with_rule_id("common-rule"),
+                );
+            }
+            Report::new("Audit", Verdict::Warning).add_group(group)
+        };
+
+        let console = Console::new(ColorMode::Never, false);
+
+        // 19 findings (below threshold 20) -> no top issues
+        let out_19 = make_report(19).render(console);
+        assert!(!out_19.contains("Top issue rules:"));
+
+        // 20 findings (at threshold 20) -> top issues shown
+        let out_20 = make_report(20).render(console);
+        assert!(out_20.contains("Top issue rules:"));
+        assert!(out_20.contains("common-rule"));
+
+        // 21 findings (above threshold 20) -> top issues shown
+        let out_21 = make_report(21).render(console);
+        assert!(out_21.contains("Top issue rules:"));
+    }
+
+    #[test]
+    fn unicode_width_and_overlong_word_handling() {
+        let console = Console::new(ColorMode::Never, false);
+
+        // CJK characters take 2 columns each
+        let report = Report::new("Audit", Verdict::Info).add_group(
+            FindingGroup::new("CJK").add_finding(Finding::new(Tone::Info, "你好世界测试")),
+        );
+        let out = report.render_with_options(console, RenderOptions::new().with_width(10));
+        assert!(out.contains("你好世界测试") || out.contains("你好"));
+
+        // Single overlong word exceeds available width without panic or infinite loop
+        let long_word = "SupercalifragilisticexpialidociousAndEvenLongerThanTerminalWidth";
+        let report_long = Report::new("Audit", Verdict::Warning).add_group(
+            FindingGroup::new("Overlong").add_finding(Finding::new(Tone::Warning, long_word)),
+        );
+        let out_long =
+            report_long.render_with_options(console, RenderOptions::new().with_width(20));
+        assert!(out_long.contains(long_word));
     }
 }

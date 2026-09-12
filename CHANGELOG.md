@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-12
+
+### Added
+
+- Native Node.js bindings and the `@casoon/runemark` TypeScript package.
+- A versioned, object-oriented Node API that accepts plain data objects while
+  keeping Rust presentation models internal.
+- Full plain-text golden rendering tests and hardened terminal escape sanitization.
+- Multi-platform packaging and TypeScript contract test fixtures.
+
+### Fixed
+
+- The npm package now ships native binaries for all six supported platforms.
+  `@casoon/runemark@0.3.0` was an incomplete npm-only release that contained
+  only the macOS arm64 binary; there is no 0.3.0 crate release.
+
+## [0.2.0] - 2026-07-30
+
 ### Changed
 
 - Public presentation types are now non-exhaustive so Runemark can extend its
