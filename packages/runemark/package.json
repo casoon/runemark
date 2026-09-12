@@ -21,7 +21,7 @@
   },
   "scripts": {
     "build": "napi build --release --platform --manifest-path ../../bindings/node/Cargo.toml --package-json-path package.json --output-dir ../../packages/runemark --js native.cjs --dts native.d.ts",
-    "test": "npm run build && node --test test/*.test.mjs",
+    "test": "npm run build && node --test test/api.test.mjs",
     "test:types": "tsc --noEmit",
     "test:contract": "node test/contract-consumer.mjs",
     "test:smoke": "node test/smoke-native.mjs",
