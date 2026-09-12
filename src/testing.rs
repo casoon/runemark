@@ -3,35 +3,41 @@
 /// Strips ANSI escape sequences (colors, styling, OSC 8 links) from a rendered string.
 pub fn strip_ansi(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
-    let mut in_escape = false;
-    let mut in_osc8 = false;
-
     let mut chars = input.chars().peekable();
+
     while let Some(ch) = chars.next() {
         if ch == '\x1b' {
-            if let Some(&']') = chars.peek() {
-                chars.next(); // consume ']'
-                in_osc8 = true;
-                continue;
-            } else if let Some(&'[') = chars.peek() {
-                chars.next(); // consume '['
-                in_escape = true;
-                continue;
+            match chars.peek() {
+                Some(&'[') => {
+                    chars.next(); // consume '['
+                    // CSI sequence: parameters followed by command byte in 0x40..=0x7E
+                    while let Some(&next) = chars.peek() {
+                        chars.next();
+                        if (0x40..=0x7E).contains(&(next as u32)) {
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                Some(&']') => {
+                    chars.next(); // consume ']'
+                    // OSC sequence: terminated by BEL (\x07) or ST (\x1b\\)
+                    while let Some(&next) = chars.peek() {
+                        chars.next();
+                        if next == '\x07' {
+                            break;
+                        }
+                        if next == '\x1b' {
+                            if let Some(&'\\') = chars.peek() {
+                                chars.next();
+                                break;
+                            }
+                        }
+                    }
+                    continue;
+                }
+                _ => {}
             }
-        }
-
-        if in_escape {
-            if ch.is_ascii_alphabetic() || ch == 'm' {
-                in_escape = false;
-            }
-            continue;
-        }
-
-        if in_osc8 {
-            if ch == '\x07' || ch == '\\' {
-                in_osc8 = false;
-            }
-            continue;
         }
 
         out.push(ch);
@@ -63,5 +69,11 @@ mod tests {
     fn test_strip_ansi_osc8_hyperlinks() {
         let linked = "\x1b]8;;https://example.com\x1b\\\x1b[36mexample\x1b[0m\x1b]8;;\x1b\\";
         assert_eq!(strip_ansi(linked), "example");
+    }
+
+    #[test]
+    fn test_strip_ansi_osc8_bel_terminator() {
+        let linked = "\x1b]8;;https://example.com\x07bel-link\x1b]8;;\x07";
+        assert_eq!(strip_ansi(linked), "bel-link");
     }
 }

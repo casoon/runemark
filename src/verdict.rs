@@ -1,5 +1,6 @@
 //! Verdict models and renderers for CLI commands and audit outcomes.
 
+use crate::color::sanitize_visible_text;
 use crate::color::{Console, SymbolTheme, Tone};
 use std::io::Write;
 
@@ -78,7 +79,7 @@ impl Verdict {
     ) -> std::io::Result<()> {
         let sym = self.symbol(console.symbol_theme());
         console.write_paint(self.tone(), sym, writer)?;
-        write!(writer, " {message}")
+        write!(writer, " {}", sanitize_visible_text(message))
     }
 
     /// Renders a verdict line formatted with symbol, optional label, and message as a String.

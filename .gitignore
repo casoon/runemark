@@ -6,4 +6,6 @@ bindings/node/native.cjs
 bindings/node/native.d.ts
 packages/runemark/native.cjs
 packages/runemark/native.d.ts
+packages/runemark/SHA256SUMS
 /todo.md
+/plan/

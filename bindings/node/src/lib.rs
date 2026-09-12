@@ -179,10 +179,13 @@ impl NativeProgress {
             is_terminal: None,
             mode: None,
         });
+        let is_terminal = options
+            .is_terminal
+            .unwrap_or_else(|| std::io::IsTerminal::is_terminal(&std::io::stderr()));
         let console = console_from_parts(
             options.color.as_deref(),
             options.symbols.as_deref(),
-            options.is_terminal,
+            Some(is_terminal),
         )?;
         let mode = match options.mode.as_deref().unwrap_or("auto") {
             "auto" => ProgressMode::Auto,
@@ -190,9 +193,6 @@ impl NativeProgress {
             "never" => ProgressMode::Never,
             value => return Err(invalid_value("progress mode", value)),
         };
-        let is_terminal = options
-            .is_terminal
-            .unwrap_or_else(|| std::io::IsTerminal::is_terminal(&std::io::stderr()));
 
         Ok(Self {
             progress: TerminalProgress::stderr(mode, console, is_terminal),
@@ -447,4 +447,205 @@ fn parse_file_action(value: &str) -> Result<FileAction> {
 
 fn invalid_value(kind: &str, value: &str) -> Error {
     Error::new(Status::InvalidArg, format!("invalid {kind}: {value}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_tone() {
+        assert_eq!(parse_tone("title").unwrap(), Tone::Title);
+        assert_eq!(parse_tone("muted").unwrap(), Tone::Muted);
+        assert_eq!(parse_tone("info").unwrap(), Tone::Info);
+        assert_eq!(parse_tone("success").unwrap(), Tone::Success);
+        assert_eq!(parse_tone("warning").unwrap(), Tone::Warning);
+        assert_eq!(parse_tone("error").unwrap(), Tone::Error);
+
+        let err = parse_tone("invalid").unwrap_err();
+        assert_eq!(err.status, Status::InvalidArg);
+        assert!(err.to_string().contains("invalid tone: invalid"));
+    }
+
+    #[test]
+    fn test_parse_verdict() {
+        assert_eq!(parse_verdict("passed").unwrap(), Verdict::Passed);
+        assert_eq!(parse_verdict("warning").unwrap(), Verdict::Warning);
+        assert_eq!(parse_verdict("failed").unwrap(), Verdict::Failed);
+        assert_eq!(parse_verdict("action-required").unwrap(), Verdict::ActionRequired);
+        assert_eq!(parse_verdict("skipped").unwrap(), Verdict::Skipped);
+        assert_eq!(parse_verdict("info").unwrap(), Verdict::Info);
+
+        let err = parse_verdict("unknown").unwrap_err();
+        assert_eq!(err.status, Status::InvalidArg);
+        assert!(err.to_string().contains("invalid verdict: unknown"));
+    }
+
+    #[test]
+    fn test_parse_file_action() {
+        assert_eq!(parse_file_action("added").unwrap(), FileAction::Added);
+        assert_eq!(parse_file_action("modified").unwrap(), FileAction::Modified);
+        assert_eq!(parse_file_action("deleted").unwrap(), FileAction::Deleted);
+        assert_eq!(parse_file_action("renamed").unwrap(), FileAction::Renamed);
+
+        let err = parse_file_action("copied").unwrap_err();
+        assert_eq!(err.status, Status::InvalidArg);
+    }
+
+    #[test]
+    fn test_location_from_input() {
+        let loc = location_from_input(JsLocation {
+            kind: "file".into(),
+            value: "src/main.rs".into(),
+            line: None,
+            column: None,
+        })
+        .unwrap();
+        assert_eq!(loc, Location::file("src/main.rs"));
+
+        let loc = location_from_input(JsLocation {
+            kind: "file".into(),
+            value: "src/main.rs".into(),
+            line: Some(10),
+            column: None,
+        })
+        .unwrap();
+        assert_eq!(loc, Location::file_line("src/main.rs", 10));
+
+        let loc = location_from_input(JsLocation {
+            kind: "file".into(),
+            value: "src/main.rs".into(),
+            line: Some(10),
+            column: Some(4),
+        })
+        .unwrap();
+        assert_eq!(loc, Location::file_line_col("src/main.rs", 10, 4));
+
+        let loc = location_from_input(JsLocation {
+            kind: "url".into(),
+            value: "https://example.com".into(),
+            line: None,
+            column: None,
+        })
+        .unwrap();
+        assert_eq!(loc, Location::Url("https://example.com".into()));
+
+        let loc = location_from_input(JsLocation {
+            kind: "selector".into(),
+            value: "#main".into(),
+            line: None,
+            column: None,
+        })
+        .unwrap();
+        assert_eq!(loc, Location::Selector("#main".into()));
+
+        let loc = location_from_input(JsLocation {
+            kind: "artifact".into(),
+            value: "build/out".into(),
+            line: None,
+            column: None,
+        })
+        .unwrap();
+        assert_eq!(loc, Location::Artifact("build/out".into()));
+
+        let err = location_from_input(JsLocation {
+            kind: "invalid".into(),
+            value: "test".into(),
+            line: None,
+            column: None,
+        })
+        .unwrap_err();
+        assert_eq!(err.status, Status::InvalidArg);
+    }
+
+    #[test]
+    fn test_report_from_input_schema_version_and_options() {
+        let err = report_from_input(JsReportInput {
+            schema_version: Some(2),
+            title: "Future".into(),
+            verdict: "passed".into(),
+            metrics: None,
+            groups: None,
+            next_steps: None,
+            detail_level: None,
+            max_compact_samples: None,
+        })
+        .unwrap_err();
+        assert_eq!(err.status, Status::InvalidArg);
+        assert!(err.to_string().contains("unsupported ReportInput schemaVersion"));
+
+        let report = report_from_input(JsReportInput {
+            schema_version: Some(1),
+            title: "Valid".into(),
+            verdict: "passed".into(),
+            metrics: Some(vec![JsMetric {
+                key: "Errors".into(),
+                value: "0".into(),
+                tone: Some("success".into()),
+                trend: Some("positive".into()),
+                delta: Some("-2".into()),
+            }]),
+            groups: Some(vec![JsFindingGroup {
+                title: "Code".into(),
+                findings: Some(vec![JsFinding {
+                    message: "All good".into(),
+                    tone: Some("info".into()),
+                    location: None,
+                    rule_id: Some("lint/clean".into()),
+                    remedy: None,
+                    confidence: Some("high".into()),
+                    badge: Some(JsBadge {
+                        label: "verified".into(),
+                        tone: Some("success".into()),
+                    }),
+                }]),
+                total_count: Some(1),
+                advisory: Some(false),
+            }]),
+            next_steps: Some(vec![JsNextStep {
+                text: "Ship it".into(),
+                command: Some("deploy".into()),
+            }]),
+            detail_level: Some("detailed".into()),
+            max_compact_samples: Some(5),
+        })
+        .unwrap();
+        assert_eq!(report.title, "Valid");
+        assert_eq!(report.detail_level, DetailLevel::Detailed);
+        assert_eq!(report.max_compact_samples, 5);
+    }
+
+    #[test]
+    fn test_report_from_input_invalid_enums() {
+        let err = report_from_input(JsReportInput {
+            schema_version: Some(1),
+            title: "Test".into(),
+            verdict: "passed".into(),
+            metrics: Some(vec![JsMetric {
+                key: "K".into(),
+                value: "V".into(),
+                tone: None,
+                trend: Some("invalid_trend".into()),
+                delta: Some("+1".into()),
+            }]),
+            groups: None,
+            next_steps: None,
+            detail_level: None,
+            max_compact_samples: None,
+        })
+        .unwrap_err();
+        assert_eq!(err.status, Status::InvalidArg);
+
+        let err = finding_from_input(JsFinding {
+            message: "msg".into(),
+            tone: None,
+            location: None,
+            rule_id: None,
+            remedy: None,
+            confidence: Some("super_high".into()),
+            badge: None,
+        })
+        .unwrap_err();
+        assert_eq!(err.status, Status::InvalidArg);
+    }
 }

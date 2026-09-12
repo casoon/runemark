@@ -64,7 +64,7 @@ impl ErrorBlock {
             writeln!(writer)?;
             write!(writer, "  ")?;
             console.write_paint(Tone::Warning, "Remedy:", writer)?;
-            writeln!(writer, " {remedy}")?;
+            writeln!(writer, " {}", crate::color::sanitize_visible_text(remedy))?;
         }
 
         if !self.commands.is_empty() {

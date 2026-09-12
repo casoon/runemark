@@ -1,6 +1,6 @@
 {
   "name": "@casoon/runemark",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Native Node.js terminal presentation powered by Runemark",
   "license": "MIT",
   "main": "index.cjs",
@@ -22,7 +22,12 @@
   "scripts": {
     "build": "napi build --release --platform --manifest-path ../../bindings/node/Cargo.toml --package-json-path package.json --output-dir ../../packages/runemark --js native.cjs --dts native.d.ts",
     "test": "npm run build && node --test test/*.test.mjs",
-    "pack:check": "npm pack --dry-run --ignore-scripts"
+    "test:types": "tsc --noEmit",
+    "test:contract": "node test/contract-consumer.mjs",
+    "test:smoke": "node test/smoke-native.mjs",
+    "pack:check": "npm pack --dry-run --ignore-scripts",
+    "fetch:binaries": "node scripts/release-binaries.mjs fetch",
+    "prepublishOnly": "node scripts/release-binaries.mjs verify && npm run test:smoke"
   },
   "napi": {
     "binaryName": "runemark",
@@ -36,6 +41,7 @@
     ]
   },
   "devDependencies": {
-    "@napi-rs/cli": "^3.5.1"
+    "@napi-rs/cli": "^3.5.1",
+    "typescript": "^5.0.0"
   }
 }

@@ -49,11 +49,41 @@ test('report rejects unsupported schema versions at the native boundary', () => 
 })
 
 test('progress can be used without terminal output', () => {
-  const progress = new RunemarkProgress({ mode: 'never', ...plain, total: 2 })
+  const progress = new RunemarkProgress({ mode: 'never', ...plain })
 
   progress.start(2, 'Checking files')
   progress.advance(2, 'Files checked')
   progress.finish(Verdict.Passed, 'Complete')
+})
+
+test('progress respects explicit isTerminal override for all combinations', () => {
+  for (const isTerminal of [true, false]) {
+    for (const mode of ['never', 'always', 'auto']) {
+      const p = new RunemarkProgress({ mode, isTerminal, color: 'never' })
+      assert.ok(p)
+    }
+  }
+})
+
+test('terminal escape sequences and disallowed URL schemes are safely neutralized', () => {
+  const console = new RunemarkConsole({ color: 'never', isTerminal: false })
+  const neutralized = console.info('Untrusted: \x1b[31mRed\x1b[0m\x07')
+  assert.equal(neutralized, 'Untrusted: ^[[31mRed^[[0m^G')
+
+  const report = new RunemarkReport({
+    schemaVersion: 1,
+    title: 'Security check',
+    verdict: Verdict.Passed,
+    groups: [{
+      title: 'Links',
+      findings: [{
+        message: 'Malicious link',
+        location: { kind: 'url', value: 'javascript:alert(1)' },
+      }],
+    }],
+  })
+  const rendered = report.render({ color: 'always', isTerminal: true })
+  assert.ok(!rendered.includes('\x1b]8;;'), 'Must not create OSC 8 link for javascript: scheme')
 })
 
 test('error and diff renderers use the same native presentation core', () => {
@@ -65,4 +95,51 @@ test('error and diff renderers use the same native presentation core', () => {
     renderDiff({ changes: [{ action: 'added', path: 'src/report.ts' }] }, plain),
     '  + CREATE src/report.ts\n',
   )
+})
+
+test('report rendering has exact byte-for-byte parity with Rust core', () => {
+  const report = new RunemarkReport({
+    schemaVersion: 1,
+    title: 'Security & Quality Audit',
+    verdict: Verdict.Warning,
+    metrics: [
+      { key: 'Issues', value: '2', tone: 'warning' },
+      { key: 'Coverage', value: '88%', tone: 'success', trend: 'positive', delta: '+3%' },
+    ],
+    groups: [{
+      title: 'Vulnerabilities',
+      findings: [
+        {
+          message: 'SQL injection vulnerability',
+          tone: 'error',
+          ruleId: 'security/sql-injection',
+          location: { kind: 'file', value: 'src/db.rs', line: 42 },
+          confidence: 'high',
+          badge: { label: 'critical', tone: 'error' },
+        },
+        {
+          message: 'Hardcoded secret',
+          tone: 'warning',
+          ruleId: 'security/secret-leak',
+          location: { kind: 'file', value: 'src/auth.rs', line: 10, column: 5 },
+        },
+      ],
+    }],
+    nextSteps: [
+      { text: 'Fix critical vulnerabilities', command: 'cargo audit fix' },
+    ],
+  })
+
+  const rendered = report.render(plain)
+  const expected =
+    '[WARN] Security & Quality Audit\n\n' +
+    '  Issues: 2   Coverage: 88% (+3%)\n\n' +
+    '* Vulnerabilities (2)\n' +
+    '  - [critical] SQL injection vulnerability [security/sql-injection] (high confidence) at src/db.rs:42\n' +
+    '  - Hardcoded secret [security/secret-leak] at src/auth.rs:10:5\n\n' +
+    'Next steps:\n' +
+    '  - Fix critical vulnerabilities\n' +
+    '    $ cargo audit fix\n'
+
+  assert.equal(rendered, expected)
 })

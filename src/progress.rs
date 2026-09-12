@@ -1,5 +1,6 @@
 //! TTY-aware progress sinks with an optional `indicatif` backend.
 
+use crate::color::sanitize_visible_text;
 use crate::{Console, Tone, Verdict};
 use std::io::Write;
 use std::sync::Mutex;
@@ -90,7 +91,7 @@ impl<W: Write + Send> ProgressSink for PlainProgress<W> {
         let Ok(mut writer) = self.writer.lock() else {
             return;
         };
-        let _ = writeln!(writer, "{message} (0/{total})");
+        let _ = writeln!(writer, "{} (0/{total})", sanitize_visible_text(message));
     }
 
     fn advance(&self, _: u64, _: &str) {
@@ -212,12 +213,14 @@ impl ProgressSink for IndicatifProgress {
             .expect("the built-in progress template is valid")
             .progress_chars("#>-"),
         );
-        self.bar.set_message(message.to_string());
+        self.bar
+            .set_message(sanitize_visible_text(message).into_owned());
     }
 
     fn advance(&self, position: u64, message: &str) {
         self.bar.set_position(position);
-        self.bar.set_message(message.to_string());
+        self.bar
+            .set_message(sanitize_visible_text(message).into_owned());
     }
 
     fn notice(&self, tone: Tone, message: &str) {
@@ -255,5 +258,18 @@ mod tests {
         assert!(ProgressMode::Auto.is_interactive(true));
         assert!(!ProgressMode::Auto.is_interactive(false));
         assert!(ProgressMode::Always.is_interactive(false));
+    }
+
+    #[test]
+    fn plain_progress_neutralizes_control_characters() {
+        let progress = PlainProgress::new(Console::new(ColorMode::Never, false), Vec::new());
+
+        progress.start(1, "Scan\x1b[31m\rspoof");
+        progress.finish(Verdict::Passed, "Done\x07");
+
+        assert_eq!(
+            String::from_utf8(progress.into_inner()).unwrap(),
+            "Scan^[[31m^Mspoof (0/1)\n[OK] Done^G\n"
+        );
     }
 }

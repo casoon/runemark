@@ -56,6 +56,31 @@ boundaries:
 4. Use a concise conventional commit subject where practical, such as
    `feat: add grouped finding summary` or `fix: preserve plain output`.
 
+## Releasing
+
+1. Bump the version in `Cargo.toml`, `bindings/node/Cargo.toml` (package and
+   `runemark` dependency) and `packages/runemark/package.json`, and date the
+   release in `CHANGELOG.md`. `node scripts/check-release-metadata.mjs` checks
+   that they agree.
+2. After merging to `main`, optionally run `gh workflow run release.yml --ref main`
+   to build and smoke-test all native binaries before tagging (dry run, nothing
+   is published).
+3. Push the tag `v<version>` from `main`. The Release workflow builds the six
+   native binaries, publishes the crate to crates.io, and attaches the binaries
+   plus `SHA256SUMS` to the GitHub release.
+4. Publish the npm package manually:
+
+   ```bash
+   cd packages/runemark
+   npm ci
+   npm run build
+   npm run fetch:binaries
+   npm publish
+   ```
+
+   `prepublishOnly` refuses to publish unless all six binaries match the
+   release checksums and the host binary passes the smoke test.
+
 ## Reporting issues
 
 Include the Runemark version, Rust version, operating system, terminal, color
