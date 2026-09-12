@@ -12,15 +12,14 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'runemark-consumer-'))
 
 try {
   // 1. Pack package into temporary directory
-  const packOutput = execSync('npm pack --ignore-scripts', {
+  // Pack straight into tmpDir: renaming across drives fails on Windows (EXDEV).
+  const packOutput = execSync(`npm pack --ignore-scripts --pack-destination "${tmpDir}"`, {
     cwd: pkgDir,
     encoding: 'utf8',
   }).trim()
 
   const tarballName = packOutput.split('\n').pop().trim()
-  const tarballPath = path.join(pkgDir, tarballName)
   const destTarball = path.join(tmpDir, tarballName)
-  fs.renameSync(tarballPath, destTarball)
 
   // 2. Initialize consumer project
   execSync('npm init -y', { cwd: tmpDir, stdio: 'pipe' })
