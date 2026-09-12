@@ -28,15 +28,16 @@ fail at the package boundary rather than rendering a partial report.
 - The package requires Node.js 20 or newer and targets Node-API 8.
 - The binding crate has its own Rust 1.88 build requirement; the `runemark`
   core crate retains its Rust 1.85 minimum supported version.
-- Native binaries are distributed as exact-version optional platform packages.
-  The root package is not published until every configured target is built and
-  runtime-tested in CI.
+- The package bundles native binaries for all six configured targets; the
+  loader picks the one for the current platform.
 - The generated native loader is private. Consumers import only
-  `@casoon/runemark`, never `native.cjs` or a platform package.
+  `@casoon/runemark`, never `native.cjs` or a binary file.
 
 ## Release rule
 
-NPM release is a separate production workflow. It must build every configured
-target, run the package's Node tests against the generated artifact, publish
-all platform packages, then publish the root package. npm publication is never
-performed from a local development machine.
+The Release workflow builds every configured target, runtime-tests each binary,
+publishes the crate, and attaches the binaries with `SHA256SUMS` to the GitHub
+release. The npm package is then published manually from a maintainer machine
+(`npm run fetch:binaries && npm publish`); `prepublishOnly` refuses to publish
+unless all six binaries match the release checksums and the host binary passes
+the smoke test. See [CONTRIBUTING.md](CONTRIBUTING.md#releasing).

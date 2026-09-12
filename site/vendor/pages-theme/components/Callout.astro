@@ -42,6 +42,18 @@ const { type = 'note', title = TITLES[type] } = Astro.props;
     color: var(--heading);
     font-weight: 600;
   }
+  /* The tinted backgrounds lower the contrast of the accent colour below 4.5:1, for any
+     project accent. Links use the heading colour and keep the accent as underline. */
+  .body :global(a),
+  .body :global(a:hover) {
+    color: var(--heading);
+    text-decoration: underline;
+    text-decoration-color: var(--accent);
+    text-underline-offset: 2px;
+  }
+  .body :global(a:hover) {
+    text-decoration-thickness: 2px;
+  }
   .body :global(> :last-child) {
     margin-bottom: 0;
   }
