@@ -16,7 +16,6 @@ const tag = `v${version}`
 const checksumFile = 'SHA256SUMS'
 const binaries = [
   'runemark.darwin-arm64.node',
-  'runemark.darwin-x64.node',
   'runemark.win32-x64-msvc.node',
   'runemark.linux-x64-gnu.node',
   'runemark.linux-x64-musl.node',
