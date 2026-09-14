@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-09-14
+
+### Fixed
+
+- `TerminalProgress::stderr` no longer selects the `indicatif` bar where
+  `indicatif` hides its output (`TERM` unset or `dumb`); every notice was
+  silently dropped there. Such terminals now get plain lifecycle lines.
+
+### Added
+
+- `TerminalProgress::is_interactive` reports whether a live progress bar is rendered.
+
 ## [0.3.2] - 2026-09-14
 
 ### Fixed

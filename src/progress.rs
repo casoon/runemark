@@ -13,6 +13,8 @@ pub enum ProgressMode {
     #[default]
     Auto,
     /// Prefer an interactive bar even if the output stream is not a terminal.
+    ///
+    /// Falls back to plain lifecycle lines where `indicatif` cannot draw.
     Always,
     /// Suppress all progress output.
     Never,
@@ -132,17 +134,31 @@ impl TerminalProgress {
     /// With the `progress` feature enabled, `Auto` selects an interactive bar
     /// only for a terminal. Otherwise, the sink writes a compact start/notice/
     /// finish lifecycle suitable for redirected logs.
+    ///
+    /// The interactive bar is only chosen if `indicatif` would actually draw
+    /// it: it hides its output when `TERM` is unset or `dumb`, which would
+    /// silently drop every notice. Such terminals get the plain lifecycle.
     pub fn stderr(mode: ProgressMode, console: Console, _is_terminal: bool) -> Self {
         if mode == ProgressMode::Never {
             return Self::Silent(SilentProgress);
         }
 
         #[cfg(feature = "progress")]
-        if mode.is_interactive(_is_terminal) {
+        if mode.is_interactive(_is_terminal) && !indicatif::ProgressDrawTarget::stderr().is_hidden()
+        {
             return Self::Indicatif(IndicatifProgress::new(console));
         }
 
         Self::Plain(PlainProgress::new(console, std::io::stderr()))
+    }
+
+    /// Returns whether this sink renders an interactive progress bar.
+    pub fn is_interactive(&self) -> bool {
+        match self {
+            Self::Silent(_) | Self::Plain(_) => false,
+            #[cfg(feature = "progress")]
+            Self::Indicatif(_) => true,
+        }
     }
 }
 
@@ -252,6 +268,20 @@ mod tests {
             String::from_utf8(progress.into_inner()).unwrap(),
             "Auditing URLs (0/4)\nOne URL failed\n[WARN] Audit complete\n"
         );
+    }
+
+    #[test]
+    fn terminal_progress_is_interactive_only_where_a_bar_can_be_drawn() {
+        let console = Console::new(ColorMode::Never, false);
+        assert!(!TerminalProgress::stderr(ProgressMode::Auto, console, false).is_interactive());
+        assert!(!TerminalProgress::stderr(ProgressMode::Never, console, true).is_interactive());
+
+        #[cfg(feature = "progress")]
+        {
+            let drawable = !indicatif::ProgressDrawTarget::stderr().is_hidden();
+            let progress = TerminalProgress::stderr(ProgressMode::Always, console, true);
+            assert_eq!(progress.is_interactive(), drawable);
+        }
     }
 
     #[test]
