@@ -7,11 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-14
+
 ### Fixed
 
 - Narrow report layouts now wrap a finding's rule ID, confidence and location
   onto continuation lines with the hanging indent instead of overflowing the
   given width.
+- The interactive progress bar no longer flashes one frame in the default
+  `indicatif` style when an operation starts.
+
+### Changed
+
+- Update the optional `indicatif` dependency to 0.18 (drops the unmaintained
+  `number_prefix` crate).
 
 ## [0.3.1] - 2026-09-12
 

@@ -1,6 +1,6 @@
 [package]
 name = "runemark"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 rust-version = "1.85"
 description = "Opinionated terminal presentation for Rust command-line tools"
@@ -16,4 +16,4 @@ progress = ["dep:indicatif"]
 
 [dependencies]
 unicode-width = "0.2"
-indicatif = { version = "0.17", optional = true }
+indicatif = { version = "0.18", optional = true }

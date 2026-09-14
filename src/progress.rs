@@ -205,7 +205,6 @@ impl IndicatifProgress {
 #[cfg(feature = "progress")]
 impl ProgressSink for IndicatifProgress {
     fn start(&self, total: u64, message: &str) {
-        self.bar.set_length(total);
         self.bar.set_style(
             indicatif::ProgressStyle::with_template(
                 "{spinner:.cyan} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}",
@@ -213,6 +212,8 @@ impl ProgressSink for IndicatifProgress {
             .expect("the built-in progress template is valid")
             .progress_chars("#>-"),
         );
+        // Style first: set_length draws, and would render the default style once
+        self.bar.set_length(total);
         self.bar
             .set_message(sanitize_visible_text(message).into_owned());
     }
