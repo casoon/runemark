@@ -10,7 +10,7 @@
 //! Grouping, ordering and wording stay with the application.
 //!
 //! Rendering is available without the `select` feature — [`Menu::render`] is
-//! plain formatting. Only [`Menu::run`] needs the feature, and with it
+//! plain formatting. Only `Menu::run` needs the feature, and with it
 //! `crossterm`.
 
 use std::fmt;

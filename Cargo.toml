@@ -11,6 +11,11 @@ keywords = ["cli", "terminal", "reporting", "progress", "output"]
 categories = ["command-line-interface", "command-line-utilities"]
 exclude = ["todo.md", "bindings/**", "packages/**", "plan/**", "scripts/**", "site/**", "docs/**"]
 
+# Without this, docs.rs builds default features only and the `progress` and
+# `select` APIs never appear in the published documentation.
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 progress = ["dep:indicatif"]
 select = ["dep:crossterm"]
