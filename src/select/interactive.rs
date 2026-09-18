@@ -4,7 +4,7 @@ use std::io::{self, Write};
 
 use super::terminal::{Key, RawTerminal, escape};
 
-use super::{Menu, Outcome, SelectMode};
+use super::{Menu, Outcome, SelectMode, Viewport};
 use crate::color::Console;
 
 /// Hides the cursor for as long as this value lives.
@@ -81,16 +81,15 @@ impl Menu {
     fn event_loop(&self, console: Console, terminal: &RawTerminal) -> io::Result<Outcome> {
         let mut index = 0usize;
         let last = self.len() - 1;
-        let mut drawn = false;
+        let mut view = Scroll::default();
 
         loop {
-            self.draw(console, index, drawn)?;
-            drawn = true;
+            self.draw(console, terminal, index, &mut view)?;
 
             match self.act_on(terminal.read_key()?, index, last) {
                 Action::Move(next) => index = next,
                 Action::Finish(outcome) => {
-                    self.draw(console, index, true)?;
+                    self.draw(console, terminal, index, &mut view)?;
                     return Ok(outcome);
                 }
                 Action::Ignore => {}
@@ -127,27 +126,85 @@ impl Menu {
     }
 
     /// Draws the menu in place, overwriting the previous frame.
-    fn draw(&self, console: Console, index: usize, redraw: bool) -> io::Result<()> {
-        let mut stderr = io::stderr();
-
-        if redraw {
-            write!(
-                stderr,
-                "{}{}",
-                escape::move_up(self.frame_height()),
-                escape::CLEAR_TO_END
-            )?;
-        }
+    fn draw(
+        &self,
+        console: Console,
+        terminal: &RawTerminal,
+        index: usize,
+        view: &mut Scroll,
+    ) -> io::Result<()> {
+        let viewport = view.advance(self, terminal, index);
 
         // Raw mode drops the implicit carriage return on newline, so the frame
         // is rendered normally and then given explicit ones.
-        let frame =
-            crate::internal::collect_to_string(|buf| self.write_frame(buf, console, Some(index)));
-        for line in frame.lines() {
+        let frame = crate::internal::collect_to_string(|buf| {
+            self.write_frame(buf, console, Some(index), viewport)
+        });
+        let lines: Vec<&str> = frame.lines().collect();
+
+        let mut stderr = io::stderr();
+        if let Some(previous) = view.drawn {
+            write!(
+                stderr,
+                "{}{}",
+                escape::move_up(previous),
+                escape::CLEAR_TO_END
+            )?;
+        }
+        for line in &lines {
             write!(stderr, "{line}\r\n")?;
         }
+        stderr.flush()?;
 
-        stderr.flush()
+        // Counting what was actually written is what keeps the redraw exact.
+        // Deriving the height a second time invites the two to disagree, which
+        // shows up as a stale line or an eaten one.
+        view.drawn = Some(u16::try_from(lines.len()).unwrap_or(u16::MAX));
+        Ok(())
+    }
+}
+
+/// Where the body is scrolled to, and how tall the last frame was.
+#[derive(Debug, Default)]
+struct Scroll {
+    start: usize,
+    drawn: Option<u16>,
+}
+
+impl Scroll {
+    /// Scrolls the window the least amount that brings the cursor into view.
+    ///
+    /// Only moving when the cursor would leave the window keeps the list still
+    /// under the cursor; recentring on every keypress makes short moves feel
+    /// like the whole screen is sliding.
+    fn advance(&mut self, menu: &Menu, terminal: &RawTerminal, index: usize) -> Option<Viewport> {
+        // A terminal that reports no height gets the whole menu, as before.
+        let height = terminal.height()?;
+        let rows = menu.body_height();
+        // One line stays free so the frame does not push its own top off screen.
+        let body = height.saturating_sub(menu.chrome_height() + 1);
+
+        if body == 0 || rows <= body {
+            self.start = 0;
+            return None;
+        }
+
+        let cursor = menu.row_of_item(index);
+        let mut start = self.start.min(rows - 1);
+
+        if cursor < start {
+            start = cursor;
+        }
+        // Ask the viewport what it will actually draw rather than predicting
+        // it. How many rows fit depends on which scroll indicators appear,
+        // which depends on the start — a second calculation of that drifts,
+        // and the drift shows up as a cursor scrolled just off the bottom.
+        while start < rows - 1 && !Viewport::new(start, body).shows(rows, cursor) {
+            start += 1;
+        }
+
+        self.start = start;
+        Some(Viewport::new(start, body))
     }
 }
 

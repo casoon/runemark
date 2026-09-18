@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-18
+
+### Fixed
+
+- A menu taller than the terminal corrupted the display. Redrawing moved the
+  cursor up by the full frame height, which a short terminal clamps, so each
+  frame ate the lines above it. The body is now windowed to what the terminal
+  can show, with `↑ N more` and `↓ N more` marking what is out of view, and the
+  window moves the least amount that keeps the cursor visible.
+- The redraw now moves up by the number of lines actually written rather than a
+  separately computed height, which is what let the two drift apart.
+
+`Menu::render` is unchanged and never windowed: a pipe or a file has no height
+to run out of.
+
 ## [0.4.0] - 2026-09-18
 
 ### Added

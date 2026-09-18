@@ -79,6 +79,19 @@ rest of the crate: the application owns the decision about its own streams.
 
 A hint key wins over the built-in `q`, so a menu is free to bind `q` itself.
 
+## Terminals shorter than the menu
+
+A menu taller than the terminal is windowed: the body scrolls, and `↑ N more` / `↓ N more`
+mark what is out of view. The window moves the least amount that keeps the cursor visible, so
+short cursor moves do not slide the whole screen.
+
+The height comes from the terminal itself, re-read on every frame, so resizing the window
+while the menu is open is picked up without a `SIGWINCH` handler. A terminal that reports no
+height gets the whole menu.
+
+`Menu::render` is never windowed. A pipe or a file has no height to run out of, and
+truncating there would drop entries for no reason.
+
 ## Without a terminal
 
 `SelectMode` follows the same shape as `ColorMode` and `ProgressMode`:
