@@ -1,6 +1,6 @@
 [package]
 name = "runemark"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 rust-version = "1.85"
 description = "Opinionated terminal presentation for Rust command-line tools"
@@ -32,6 +32,7 @@ indicatif = { version = "0.18", optional = true }
 [[example]]
 name = "select_demo"
 required-features = ["select"]
+
 
 [target.'cfg(unix)'.dependencies]
 libc = { version = "0.2", optional = true }

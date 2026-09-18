@@ -125,6 +125,61 @@ pub enum Outcome {
     Unavailable,
 }
 
+/// One drawn line of the menu body.
+enum Row<'a> {
+    Group(&'a str),
+    /// An entry, with its position among selectable items.
+    Item(&'a Item, usize),
+}
+
+/// A window over the body, for a terminal too short to show every entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Viewport {
+    /// First body row to draw.
+    start: usize,
+    /// Body rows available, before any scroll indicator is subtracted.
+    height: usize,
+}
+
+impl Viewport {
+    pub(crate) const fn new(start: usize, height: usize) -> Self {
+        Self { start, height }
+    }
+
+    /// Whether `row` lands inside what this viewport draws of `rows` rows.
+    #[cfg(any(all(feature = "select", unix), test))]
+    pub(crate) fn shows(self, rows: usize, row: usize) -> bool {
+        self.window(rows).contains(&row)
+    }
+
+    /// The rows to draw, leaving room for whichever indicators are needed.
+    ///
+    /// An indicator costs a body line, and showing one can be what pushes the
+    /// other into existence, so the two are resolved together rather than in
+    /// sequence.
+    fn window(self, rows: usize) -> std::ops::Range<usize> {
+        if rows <= self.height {
+            return 0..rows;
+        }
+
+        let start = self.start.min(rows.saturating_sub(1));
+        let above = usize::from(start > 0);
+        // Assume a trailing indicator, then confirm: with one line spent above
+        // and one below, anything that still does not fit needs both.
+        let visible = self.height.saturating_sub(above + 1).max(1);
+        let end = (start + visible).min(rows);
+
+        if end == rows {
+            // Nothing below after all; that line goes back to the body.
+            let visible = self.height.saturating_sub(above).max(1);
+            let start = rows.saturating_sub(visible).max(start);
+            return start..rows;
+        }
+
+        start..end
+    }
+}
+
 /// A grouped list the user picks from.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Menu {
@@ -186,15 +241,34 @@ impl Menu {
     ///
     /// This is what a non-interactive caller shows, and what tests assert on.
     pub fn render(&self, console: Console) -> String {
-        crate::internal::collect_to_string(|buf| self.write_frame(buf, console, None))
+        crate::internal::collect_to_string(|buf| self.write_frame(buf, console, None, None))
+    }
+
+    /// The body as a flat list of lines, so a viewport can window over it.
+    fn body_rows(&self) -> Vec<Row<'_>> {
+        let mut rows = Vec::with_capacity(self.groups.len() + self.len());
+        let mut index = 0;
+        for group in &self.groups {
+            rows.push(Row::Group(&group.label));
+            for item in &group.items {
+                rows.push(Row::Item(item, index));
+                index += 1;
+            }
+        }
+        rows
     }
 
     /// Writes the menu, marking `cursor` when one is given.
+    ///
+    /// `viewport` limits the body to a window, for a terminal that cannot show
+    /// every entry. Without it the whole menu is written — which is what a
+    /// pipe or a file wants, neither having a height to run out of.
     fn write_frame(
         &self,
         writer: &mut (impl std::io::Write + ?Sized),
         console: Console,
         cursor: Option<usize>,
+        viewport: Option<Viewport>,
     ) -> std::io::Result<()> {
         if let Some(heading) = &self.heading {
             console.write_paint(Tone::Title, heading, writer)?;
@@ -207,32 +281,44 @@ impl Menu {
         }
 
         let width = self.label_width();
-        let mut index = 0;
+        let rows = self.body_rows();
+        let window = viewport.map_or(0..rows.len(), |viewport| viewport.window(rows.len()));
 
-        for group in &self.groups {
-            console.write_paint(Tone::Info, &group.label, writer)?;
+        if window.start > 0 {
+            console.write_paint(Tone::Muted, format!("  ↑ {} more", window.start), writer)?;
             writeln!(writer)?;
+        }
 
-            for item in &group.items {
-                let marker = if cursor == Some(index) { "›" } else { " " };
-                let padding = width.saturating_sub(item.label.width());
-                let selected = cursor == Some(index);
-
-                write!(writer, "{marker} ")?;
-                console.write_paint(
-                    if selected { Tone::Success } else { Tone::Info },
-                    &item.label,
-                    writer,
-                )?;
-
-                if let Some(description) = &item.description {
-                    write!(writer, "{:padding$}  ", "")?;
-                    console.write_paint(Tone::Muted, description, writer)?;
+        for row in &rows[window.clone()] {
+            match row {
+                Row::Group(label) => {
+                    console.write_paint(Tone::Info, label, writer)?;
                 }
+                Row::Item(item, index) => {
+                    let selected = cursor == Some(*index);
+                    let marker = if selected { "›" } else { " " };
+                    let padding = width.saturating_sub(item.label.width());
 
-                writeln!(writer)?;
-                index += 1;
+                    write!(writer, "{marker} ")?;
+                    console.write_paint(
+                        if selected { Tone::Success } else { Tone::Info },
+                        &item.label,
+                        writer,
+                    )?;
+
+                    if let Some(description) = &item.description {
+                        write!(writer, "{:padding$}  ", "")?;
+                        console.write_paint(Tone::Muted, description, writer)?;
+                    }
+                }
             }
+            writeln!(writer)?;
+        }
+
+        let remaining = rows.len() - window.end;
+        if remaining > 0 {
+            console.write_paint(Tone::Muted, format!("  ↓ {remaining} more"), writer)?;
+            writeln!(writer)?;
         }
 
         if !self.hints.is_empty() {
@@ -251,16 +337,27 @@ impl Menu {
         Ok(())
     }
 
-    /// The number of lines [`Menu::write_frame`] produces, for redrawing in place.
-    ///
-    /// Only the interactive loop redraws, but the test that pins this against
-    /// the real line count runs without the feature too.
+    /// The body row showing item `index`, for keeping the cursor in view.
     #[cfg(any(all(feature = "select", unix), test))]
-    fn frame_height(&self) -> u16 {
+    fn row_of_item(&self, index: usize) -> usize {
+        self.body_rows()
+            .iter()
+            .position(|row| matches!(row, Row::Item(_, item) if *item == index))
+            .unwrap_or(0)
+    }
+
+    /// Body rows in total, for sizing a viewport.
+    #[cfg(any(all(feature = "select", unix), test))]
+    fn body_height(&self) -> usize {
+        self.groups.len() + self.len()
+    }
+
+    /// Lines the menu spends on anything but the body.
+    #[cfg(any(all(feature = "select", unix), test))]
+    fn chrome_height(&self) -> usize {
         let heading = if self.heading.is_some() { 2 } else { 0 };
-        let body = self.groups.len() + self.len();
         let hints = if self.hints.is_empty() { 0 } else { 2 };
-        u16::try_from(heading + body + hints).unwrap_or(u16::MAX)
+        heading + hints
     }
 }
 
@@ -367,25 +464,137 @@ mod tests {
         assert!(Menu::new().is_empty());
     }
 
-    #[test]
-    fn frame_height_matches_the_rendered_line_count() {
-        // Redrawing in place depends on this being exact; an off-by-one leaves
-        // a stale line on screen or eats one above the menu.
-        for candidate in [
-            menu(),
-            Menu::new().add_group(Group::new("G").add_item(Item::new("a", "a"))),
-            Menu::new()
-                .with_heading("H")
-                .add_group(Group::new("G").add_item(Item::new("a", "a"))),
-            menu().add_hint(Hint::new('C', "Clean")),
-        ] {
-            let lines = candidate.render(plain()).lines().count();
-            assert_eq!(
-                usize::from(candidate.frame_height()),
-                lines,
-                "for {candidate:?}"
-            );
+    fn windowed(menu: &Menu, start: usize, height: usize) -> String {
+        crate::internal::collect_to_string(|buf| {
+            menu.write_frame(buf, plain(), Some(0), Some(Viewport { start, height }))
+        })
+    }
+
+    fn long_menu(items: usize) -> Menu {
+        let mut group = Group::new("Scripts");
+        for n in 0..items {
+            group = group.add_item(Item::new(format!("t{n}"), format!("t{n}")));
         }
+        Menu::new().with_heading("many").add_group(group)
+    }
+
+    #[test]
+    fn a_body_that_fits_is_shown_whole() {
+        let menu = long_menu(3);
+        let output = windowed(&menu, 0, 50);
+        assert!(!output.contains("more"));
+        assert!(output.contains("t2"));
+    }
+
+    #[test]
+    fn a_body_that_does_not_fit_says_how_much_is_below() {
+        let menu = long_menu(40);
+        let output = windowed(&menu, 0, 10);
+        assert!(output.contains("↓ "));
+        assert!(!output.contains("↑ "), "nothing is above the top");
+    }
+
+    #[test]
+    fn scrolling_into_the_middle_shows_both_directions() {
+        let menu = long_menu(40);
+        let output = windowed(&menu, 15, 10);
+        assert!(output.contains("↑ 15 more"));
+        assert!(output.contains("↓ "));
+    }
+
+    #[test]
+    fn the_end_of_the_list_drops_the_trailing_indicator() {
+        let menu = long_menu(40);
+        let output = windowed(&menu, 60, 10);
+        assert!(output.contains("↑ "));
+        assert!(
+            !output.contains("↓ "),
+            "there is nothing below the last row"
+        );
+        assert!(output.contains("t39"), "the last entry is visible");
+    }
+
+    #[test]
+    fn a_window_never_draws_more_body_lines_than_it_was_given() {
+        // The whole point: the frame must not outgrow the terminal, or the
+        // redraw moves the cursor further up than there are lines.
+        let menu = long_menu(40);
+        for start in [0, 1, 7, 20, 39] {
+            for height in [3, 5, 10, 25] {
+                let body = windowed(&menu, start, height)
+                    .lines()
+                    .skip(2) // heading and its blank line
+                    .count();
+                assert!(
+                    body <= height,
+                    "start {start}, height {height}: drew {body} body lines"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_window_always_draws_something() {
+        let menu = long_menu(40);
+        for height in [1, 2, 3] {
+            let body = windowed(&menu, 0, height).lines().skip(2).count();
+            assert!(body >= 1, "height {height} drew nothing");
+        }
+    }
+
+    #[test]
+    fn row_lookup_accounts_for_group_labels() {
+        let menu = menu();
+        // Rows: Development, dev, dev:landings, Build, build
+        assert_eq!(menu.row_of_item(0), 1);
+        assert_eq!(menu.row_of_item(2), 4);
+        assert_eq!(menu.body_height(), 5);
+    }
+
+    #[test]
+    fn chrome_height_counts_heading_and_hints() {
+        assert_eq!(menu().chrome_height(), 4);
+        assert_eq!(Menu::new().chrome_height(), 0);
+        assert_eq!(
+            Menu::new().with_heading("h").chrome_height(),
+            2,
+            "heading plus its blank line"
+        );
+    }
+
+    #[test]
+    fn scrolling_keeps_every_cursor_position_in_view() {
+        // The bug this pins: stepping to the last entry left the cursor one
+        // row below the window, because the scroll maths and the window maths
+        // disagreed about how many lines the indicators cost.
+        let menu = long_menu(40);
+        let rows = menu.body_height();
+
+        for height in [4, 6, 11, 21, 30] {
+            let mut start = 0usize;
+            for index in 0..menu.len() {
+                let cursor = menu.row_of_item(index);
+                if cursor < start {
+                    start = cursor;
+                }
+                while start < rows - 1 && !Viewport::new(start, height).shows(rows, cursor) {
+                    start += 1;
+                }
+                assert!(
+                    Viewport::new(start, height).shows(rows, cursor),
+                    "height {height}, item {index} (row {cursor}) not visible from {start}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn rendering_is_never_windowed() {
+        // A pipe or a file has no height to run out of, so truncating there
+        // would lose entries for no reason.
+        let output = long_menu(40).render(plain());
+        assert!(output.contains("t0") && output.contains("t39"));
+        assert!(!output.contains("more"));
     }
 
     #[test]

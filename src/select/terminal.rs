@@ -94,6 +94,22 @@ impl RawTerminal {
         Ok(Some(Self { tty, original }))
     }
 
+    /// The terminal's height in lines, if it reports one.
+    ///
+    /// Queried per frame rather than cached, so resizing the window while the
+    /// menu is open is picked up without a `SIGWINCH` handler.
+    pub fn height(&self) -> Option<usize> {
+        // SAFETY: `winsize` is a plain C struct the ioctl fills completely.
+        let size = unsafe {
+            let mut size: libc::winsize = std::mem::zeroed();
+            if libc::ioctl(self.tty.as_raw_fd(), libc::TIOCGWINSZ, &raw mut size) != 0 {
+                return None;
+            }
+            size
+        };
+        (size.ws_row > 0).then_some(usize::from(size.ws_row))
+    }
+
     /// Reads one byte, retrying when a signal interrupts the call.
     fn read_byte(&self) -> io::Result<Option<u8>> {
         let mut byte = 0u8;
