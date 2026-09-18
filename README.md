@@ -29,9 +29,9 @@ Runemark is the shared presentation layer for those concerns:
 - Actionable error blocks, file-change previews, and clickable locations for
   compatible terminals.
 - Grouped, keyboard-driven selection for tools that need a menu rather than a
-  prompt.
-- Small core dependency footprint; `indicatif` and `crossterm` are optional,
-  behind the `progress` and `select` features.
+  prompt (Unix).
+- Small core dependency footprint; `indicatif` and `libc` are optional, behind
+  the `progress` and `select` features.
 
 ## Install
 
@@ -122,6 +122,11 @@ progress.finish(Verdict::Passed, "Audit complete");
 The optional `select` feature adds a grouped menu. Runemark owns the layout, the
 cursor and the key handling; the application owns what the entries are.
 
+It talks to the terminal directly — termios for raw mode, four escape sequences
+for drawing — so the only dependency is `libc` and the interactive path is
+Unix-only. Elsewhere `run` reports `Outcome::Unavailable`, which is the same
+fallback a pipeline takes, so callers need no `cfg`.
+
 ```rust
 use runemark::{ColorMode, Console, Group, Hint, Item, Menu, Outcome, SelectMode};
 use std::io::IsTerminal;
@@ -159,7 +164,7 @@ non-interactive caller shows.
 | Compact human-readable report layout | Domain finding types and business rules |
 | Detail level conventions and next-step blocks | JSON, SARIF, Markdown, HTML, and other artifacts |
 | Line-oriented terminal presentation | Logging, tracing, free-text prompts, and full-screen TUIs |
-| Grouped interactive selection (`select`) | What the entries mean, how they are grouped and ordered |
+| Grouped interactive selection (`select`, Unix) | What the entries mean, how they are grouped and ordered |
 
 ## Roadmap
 

@@ -10,9 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - `select` feature: a grouped, keyboard-driven menu (`Menu`, `Group`, `Item`,
-  `Hint`, `Outcome`, `SelectMode`), backed by `crossterm`. This is the first
-  API in the crate that reads from the terminal; the documented design
-  boundary is updated accordingly.
+  `Hint`, `Outcome`, `SelectMode`). This is the first API in the crate that
+  reads from the terminal; the documented design boundary is updated
+  accordingly. It drives termios directly, so the only dependency is `libc`
+  and the interactive path is Unix-only — elsewhere `Menu::run` reports
+  `Outcome::Unavailable`, which is the same fallback a pipeline takes.
 - `Menu::render` produces the same layout as plain text and needs no feature,
   so a non-interactive caller has something to show.
 - `SelectMode` follows `ColorMode` and `ProgressMode`: `Auto` is interactive
