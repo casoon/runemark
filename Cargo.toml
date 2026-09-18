@@ -18,9 +18,20 @@ all-features = true
 
 [features]
 progress = ["dep:indicatif"]
-select = ["dep:crossterm"]
+select = ["dep:libc"]
 
 [dependencies]
 unicode-width = "0.2"
 indicatif = { version = "0.18", optional = true }
-crossterm = { version = "0.29.0", optional = true }
+
+# The interactive menu drives the terminal directly. Only a tty and termios are
+# needed, so the feature is Unix-only rather than carrying a cross-platform
+# terminal stack; elsewhere `Menu::run` reports `Outcome::Unavailable`.
+# Menu::run only exists with the feature, so --all-targets must not try to
+# build this example without it.
+[[example]]
+name = "select_demo"
+required-features = ["select"]
+
+[target.'cfg(unix)'.dependencies]
+libc = { version = "0.2", optional = true }

@@ -7,6 +7,11 @@ order: 5
 The optional `select` feature adds a grouped menu. It is the one place where runemark reads
 from the terminal instead of only writing to it — a cursor has to react to keys.
 
+It drives the terminal directly: termios for raw mode, four escape sequences for drawing, and
+a small decoder for the six keys a menu needs. The only dependency is `libc`, and the
+interactive path is **Unix-only**. On other platforms `run` returns `Outcome::Unavailable`,
+the same result a pipeline gets, so a caller writes one code path with no `cfg`.
+
 The boundary still holds in the direction that matters: a menu carries labels, descriptions
 and hints, and nothing about what the entries mean. Grouping, ordering and wording stay with
 the application.
@@ -67,7 +72,6 @@ rest of the crate: the application owns the decision about its own streams.
 | Key | Effect |
 | --- | --- |
 | `↑` `↓` | Move the cursor, wrapping at both ends |
-| `Home` `End` | First and last entry |
 | `Enter` | Select, returning `Outcome::Selected` |
 | A hint key | Returns `Outcome::Hotkey`, matched case-insensitively |
 | `Esc`, `q` | `Outcome::Cancelled` |
@@ -85,7 +89,8 @@ A hint key wins over the built-in `q`, so a menu is free to bind `q` itself.
 | `Always` | Interactive regardless |
 | `Never` | Never interactive |
 
-Where the mode and the stream rule out interaction — and for an empty menu — `run` returns
+Where the mode and the stream rule out interaction — for an empty menu, on a non-Unix
+platform, or when the process has no controlling terminal — `run` returns
 `Outcome::Unavailable` immediately. **It never blocks on a read that cannot be answered**,
 which is what keeps a menu safe in a pipeline and in CI.
 
@@ -101,3 +106,19 @@ A signal that kills the process outright — `SIGTERM`, `SIGHUP` — leaves the 
 mode, because no destructor runs. runemark installs no signal handlers. An application that
 must survive that has to install its own. `Ctrl-C` is not affected: in raw mode it arrives as
 a key event and is reported as `Outcome::Cancelled`.
+
+## Why not a terminal crate
+
+The surface a menu needs is small: raw mode, `\x1b[?25l` / `\x1b[?25h` for the cursor,
+`\x1b[{n}F` and `\x1b[J` for redrawing in place, and six keys. Pulling in a cross-platform
+terminal stack for that costs far more than it returns — 28 packages against the two runemark
+now has with the feature on.
+
+Two details make the hand-written decoder correct rather than merely short:
+
+- **A bare `Escape` and an arrow key start with the same byte.** Only a bounded read separates
+  them. The bound comes from termios `VTIME`, not `poll` or `select`: on macOS a pty answers
+  `poll` with `POLLNVAL` instead of readability, so a poll-based timeout blocks forever on a
+  read that never completes. `VTIME` puts the timing in the kernel, where it is portable.
+- **Arrow keys have two encodings.** `ESC [ A` normally, `ESC O A` in application cursor mode,
+  which tmux and some terminals enable. Handling only the first breaks navigation there.

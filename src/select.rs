@@ -10,8 +10,13 @@
 //! Grouping, ordering and wording stay with the application.
 //!
 //! Rendering is available without the `select` feature — [`Menu::render`] is
-//! plain formatting. Only `Menu::run` needs the feature, and with it
-//! `crossterm`.
+//! plain formatting. Only `Menu::run` needs the feature.
+//!
+//! The interactive path talks to the terminal directly: termios for raw mode,
+//! four escape sequences for drawing, and a small parser for the handful of
+//! keys a menu needs. That keeps the dependency to `libc` and makes the
+//! feature Unix-only — on other platforms `Menu::run` reports
+//! [`Outcome::Unavailable`] and the caller renders the list instead.
 
 use std::fmt;
 
@@ -250,7 +255,7 @@ impl Menu {
     ///
     /// Only the interactive loop redraws, but the test that pins this against
     /// the real line count runs without the feature too.
-    #[cfg(any(feature = "select", test))]
+    #[cfg(any(all(feature = "select", unix), test))]
     fn frame_height(&self) -> u16 {
         let heading = if self.heading.is_some() { 2 } else { 0 };
         let body = self.groups.len() + self.len();
@@ -266,183 +271,24 @@ impl fmt::Display for Menu {
     }
 }
 
-#[cfg(feature = "select")]
-mod interactive {
-    use std::io::{self, Write};
+#[cfg(all(feature = "select", unix))]
+mod interactive;
+#[cfg(all(feature = "select", unix))]
+mod terminal;
 
-    use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-    use crossterm::{cursor, execute, terminal};
-
-    use super::{Menu, Outcome, SelectMode};
-    use crate::color::Console;
-
-    /// Restores the terminal when it goes out of scope.
-    ///
-    /// Held by value for the whole interactive loop, so raw mode is left on
-    /// every path out — early return, `?`, or an unwinding panic. Without this
-    /// a crash mid-menu leaves the user with a terminal that no longer echoes.
-    struct TerminalGuard;
-
-    impl TerminalGuard {
-        fn enter() -> io::Result<Self> {
-            terminal::enable_raw_mode()?;
-            // From here on the guard owns restoration, including if this fails.
-            let guard = Self;
-            execute!(io::stderr(), cursor::Hide)?;
-            Ok(guard)
-        }
-    }
-
-    impl Drop for TerminalGuard {
-        fn drop(&mut self) {
-            let _ = execute!(io::stderr(), cursor::Show);
-            let _ = terminal::disable_raw_mode();
-        }
-    }
-
-    impl Menu {
-        /// Runs the menu, returning what the user did.
-        ///
-        /// Writes to stderr, so a caller's stdout stays clean for piping.
-        ///
-        /// Returns [`Outcome::Unavailable`] without reading anything when
-        /// `mode` and `is_terminal` rule out interaction, or when the menu has
-        /// no entries. It never blocks in that case — a menu in a pipeline or
-        /// in CI must not wait for a keypress that cannot come.
-        ///
-        /// `is_terminal` is supplied by the caller rather than detected here,
-        /// matching the rest of the crate: the application owns the decision
-        /// about its own streams.
-        ///
-        /// `Ctrl-C` arrives as a key event in raw mode and is reported as
-        /// [`Outcome::Cancelled`], so the terminal is restored normally.
-        ///
-        /// A signal that kills the process outright — `SIGTERM`, `SIGHUP` —
-        /// leaves the terminal in raw mode, because no destructor runs. This
-        /// crate installs no signal handlers; an application that needs to
-        /// survive that must install its own.
-        pub fn run(
-            &self,
-            console: Console,
-            mode: SelectMode,
-            is_terminal: bool,
-        ) -> io::Result<Outcome> {
-            if !mode.is_interactive(is_terminal) || self.is_empty() {
-                return Ok(Outcome::Unavailable);
-            }
-
-            let guard = TerminalGuard::enter()?;
-            let outcome = self.event_loop(console);
-            drop(guard);
-
-            // Leave the final frame behind rather than a half-erased one.
-            let mut stderr = io::stderr();
-            let _ = writeln!(stderr);
-            outcome
-        }
-
-        fn event_loop(&self, console: Console) -> io::Result<Outcome> {
-            let mut cursor_index = 0usize;
-            let last = self.len() - 1;
-            let mut drawn = false;
-
-            loop {
-                self.draw(console, cursor_index, drawn)?;
-                drawn = true;
-
-                let Event::Key(key) = event::read()? else {
-                    continue;
-                };
-                // Windows reports press and release; acting on both double-steps.
-                if key.kind != KeyEventKind::Press {
-                    continue;
-                }
-
-                match self.act_on(key, cursor_index, last) {
-                    Action::Move(next) => cursor_index = next,
-                    Action::Finish(outcome) => {
-                        self.draw(console, cursor_index, true)?;
-                        return Ok(outcome);
-                    }
-                    Action::Ignore => {}
-                }
-            }
-        }
-
-        fn act_on(&self, key: KeyEvent, cursor_index: usize, last: usize) -> Action {
-            if key.modifiers.contains(KeyModifiers::CONTROL)
-                && matches!(key.code, KeyCode::Char('c'))
-            {
-                return Action::Finish(Outcome::Cancelled);
-            }
-
-            match key.code {
-                // Wrapping beats stopping at the ends: the list is short and a
-                // dead key at the bottom is the more annoying failure.
-                KeyCode::Up => Action::Move(if cursor_index == 0 {
-                    last
-                } else {
-                    cursor_index - 1
-                }),
-                KeyCode::Down => Action::Move(if cursor_index == last {
-                    0
-                } else {
-                    cursor_index + 1
-                }),
-                KeyCode::Home => Action::Move(0),
-                KeyCode::End => Action::Move(last),
-                KeyCode::Enter => self
-                    .items()
-                    .nth(cursor_index)
-                    .map(|item| Action::Finish(Outcome::Selected(item.id.clone())))
-                    .unwrap_or(Action::Ignore),
-                KeyCode::Esc => Action::Finish(Outcome::Cancelled),
-                KeyCode::Char(pressed) => {
-                    // Footer keys win over 'q', so a menu may bind 'q' itself.
-                    if let Some(hint) = self
-                        .hints
-                        .iter()
-                        .find(|hint| hint.key.eq_ignore_ascii_case(&pressed))
-                    {
-                        Action::Finish(Outcome::Hotkey(hint.key))
-                    } else if pressed == 'q' {
-                        Action::Finish(Outcome::Cancelled)
-                    } else {
-                        Action::Ignore
-                    }
-                }
-                _ => Action::Ignore,
-            }
-        }
-
-        /// Draws the menu in place, overwriting the previous frame.
-        fn draw(&self, console: Console, cursor_index: usize, redraw: bool) -> io::Result<()> {
-            let mut stderr = io::stderr();
-
-            if redraw {
-                execute!(
-                    stderr,
-                    cursor::MoveToPreviousLine(self.frame_height()),
-                    terminal::Clear(terminal::ClearType::FromCursorDown)
-                )?;
-            }
-
-            // Raw mode disables the implicit carriage return on newline, so the
-            // frame is rendered normally and then given explicit ones.
-            let frame = crate::internal::collect_to_string(|buf| {
-                self.write_frame(buf, console, Some(cursor_index))
-            });
-            for line in frame.lines() {
-                write!(stderr, "{line}\r\n")?;
-            }
-            stderr.flush()
-        }
-    }
-
-    enum Action {
-        Move(usize),
-        Finish(Outcome),
-        Ignore,
+/// Without a terminal backend the menu still exists; it just never takes over.
+///
+/// The interactive path is Unix-only, so a caller can write one code path and
+/// fall back to [`Menu::render`] on [`Outcome::Unavailable`] everywhere else.
+#[cfg(all(feature = "select", not(unix)))]
+impl Menu {
+    pub fn run(
+        &self,
+        _console: Console,
+        _mode: SelectMode,
+        _is_terminal: bool,
+    ) -> std::io::Result<Outcome> {
+        Ok(Outcome::Unavailable)
     }
 }
 
