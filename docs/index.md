@@ -15,6 +15,7 @@ owns layout, wrapping, symbols and the colour policy.
 - Reports with metrics, grouped findings and next steps, in compact or detailed form.
 - Error blocks, file-change previews and clickable locations in compatible terminals.
 - Progress for long-running work (optional `progress` feature in Rust).
+- Grouped, keyboard-driven selection (optional `select` feature in Rust).
 
 ## Where it stops
 
@@ -23,14 +24,15 @@ owns layout, wrapping, symbols and the colour policy.
 | Terminal colour policy and semantic tones | CLI arguments and configuration |
 | Compact human-readable report layout | Domain finding types and business rules |
 | Detail levels and next-step blocks | JSON, SARIF, Markdown, HTML and other artifacts |
-| Line-oriented terminal presentation | Logging, tracing, prompts and full-screen TUIs |
+| Line-oriented terminal presentation | Logging, tracing, free-text prompts and full-screen TUIs |
+| Grouped interactive selection (`select`) | What the entries mean, how they are grouped and ordered |
 
 ## How the docs are organised
 
 - **Getting started**: [install](getting-started/installation/) the crate or the npm package and
   render a [first output](getting-started/quickstart/).
-- **Guides**: colour policy, reports, errors and diffs, progress, the Node contract and the
-  security model.
+- **Guides**: colour policy, reports, errors and diffs, progress, selection, the Node contract
+  and the security model.
 - **Reference**: an [overview of the public API](reference/api/). Item-level documentation lives
   on [docs.rs](https://docs.rs/runemark).
 

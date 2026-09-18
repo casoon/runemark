@@ -28,7 +28,10 @@ Runemark is the shared presentation layer for those concerns:
 - Report models for verdicts, summary metrics, finding groups, and next steps.
 - Actionable error blocks, file-change previews, and clickable locations for
   compatible terminals.
-- Small core dependency footprint; `indicatif` is optional for progress bars.
+- Grouped, keyboard-driven selection for tools that need a menu rather than a
+  prompt.
+- Small core dependency footprint; `indicatif` and `crossterm` are optional,
+  behind the `progress` and `select` features.
 
 ## Install
 
@@ -114,6 +117,40 @@ progress.advance(1, "https://example.com");
 progress.finish(Verdict::Passed, "Audit complete");
 ```
 
+### Selection
+
+The optional `select` feature adds a grouped menu. Runemark owns the layout, the
+cursor and the key handling; the application owns what the entries are.
+
+```rust
+use runemark::{ColorMode, Console, Group, Hint, Item, Menu, Outcome, SelectMode};
+use std::io::IsTerminal;
+
+let menu = Menu::new()
+    .with_heading("casoon.dev")
+    .with_note("pnpm")
+    .add_group(
+        Group::new("Development")
+            .add_item(Item::new("dev", "dev").with_description("Start the site")),
+    )
+    .add_hint(Hint::new('U', "Updates"));
+
+let outcome = menu.run(
+    Console::stderr(ColorMode::Auto),
+    SelectMode::Auto,
+    std::io::stderr().is_terminal(),
+)?;
+
+// Without a terminal the menu does not run and never blocks; render it instead.
+if outcome == Outcome::Unavailable {
+    print!("{}", menu.render(Console::stdout(ColorMode::Auto)));
+}
+# Ok::<(), std::io::Error>(())
+```
+
+`Menu::render` needs no feature — it is plain formatting, and it is what a
+non-interactive caller shows.
+
 ## Design boundaries
 
 | Runemark owns | Applications own |
@@ -121,7 +158,8 @@ progress.finish(Verdict::Passed, "Audit complete");
 | Terminal color policy and semantic tones | CLI arguments and configuration |
 | Compact human-readable report layout | Domain finding types and business rules |
 | Detail level conventions and next-step blocks | JSON, SARIF, Markdown, HTML, and other artifacts |
-| Line-oriented terminal presentation | Logging, tracing, prompts, and full-screen TUIs |
+| Line-oriented terminal presentation | Logging, tracing, free-text prompts, and full-screen TUIs |
+| Grouped interactive selection (`select`) | What the entries mean, how they are grouped and ordered |
 
 ## Roadmap
 
@@ -137,6 +175,7 @@ Run the Rust examples directly from this repository:
 ```bash
 cargo run --example report_demo
 cargo run --example progress_demo --features progress
+cargo run --example select_demo --features select
 ```
 
 Node.js examples are in [examples/node](examples/node). Build the local native
