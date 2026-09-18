@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-18
+
 ### Added
 
 - `select` feature: a grouped, keyboard-driven menu (`Menu`, `Group`, `Item`,
