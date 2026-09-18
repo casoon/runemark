@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `select` feature: a grouped, keyboard-driven menu (`Menu`, `Group`, `Item`,
+  `Hint`, `Outcome`, `SelectMode`), backed by `crossterm`. This is the first
+  API in the crate that reads from the terminal; the documented design
+  boundary is updated accordingly.
+- `Menu::render` produces the same layout as plain text and needs no feature,
+  so a non-interactive caller has something to show.
+- `SelectMode` follows `ColorMode` and `ProgressMode`: `Auto` is interactive
+  only for a terminal, and a menu that cannot be interactive returns
+  `Outcome::Unavailable` without blocking on a read.
+
 ## [0.3.3] - 2026-09-14
 
 ### Fixed

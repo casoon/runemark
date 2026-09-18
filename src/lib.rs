@@ -14,6 +14,7 @@ mod internal;
 pub mod location;
 pub mod progress;
 pub mod report;
+pub mod select;
 pub mod testing;
 pub mod verdict;
 
@@ -26,4 +27,5 @@ pub use report::{
     Badge, Confidence, DetailLevel, Finding, FindingGroup, Metric, NextStep, RenderOptions, Report,
     ScopeNote, Trend, Vocabulary,
 };
+pub use select::{Group, Hint, Item, Menu, Outcome, SelectMode};
 pub use verdict::Verdict;
