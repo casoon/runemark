@@ -1,8 +1,14 @@
 name: Release
 
-# A version tag publishes the crate and attaches the native Node binaries (plus
-# SHA256SUMS) to the GitHub release. The npm package is published manually from
-# a maintainer machine: `npm run fetch:binaries && npm publish` in packages/runemark.
+# A version tag builds the native Node binaries and attaches them (plus
+# SHA256SUMS) to the GitHub release.
+#
+# The crate is NOT published here. `cargo publish` is run from a maintainer
+# machine, so the registry token stays there rather than in repository secrets,
+# and releasing is a deliberate step instead of a side effect of pushing a tag.
+# The npm package is published manually the same way:
+# `npm run fetch:binaries && npm publish` in packages/runemark.
+#
 # `workflow_dispatch` runs only the metadata check and the binary builds, as a
 # dry run before tagging.
 
@@ -104,27 +110,31 @@ jobs:
           path: packages/runemark/runemark.*.node
           if-no-files-found: error
 
-  publish-crate:
-    name: Publish crates.io
+  confirm-published:
+    name: Confirm crates.io
     if: startsWith(github.ref, 'refs/tags/')
-    # Only publish the crate once every native binary for this version built and
-    # passed its smoke test, so crate and npm releases cannot diverge.
+    # The crate is published from a maintainer machine before the tag is
+    # pushed; this only checks that it actually was.
     needs: [verify-metadata, build-node-bindings]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Verify package
-        run: cargo package --locked
-      - name: Publish crate to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --locked
+      - name: Confirm the version is on crates.io
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          status="$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H 'User-Agent: runemark release workflow' \
+            "https://crates.io/api/v1/crates/runemark/${version}")"
+          if [ "$status" != "200" ]; then
+            echo "runemark ${version} is not on crates.io (HTTP ${status})."
+            echo "Run 'cargo publish' locally before pushing the tag."
+            exit 1
+          fi
+          echo "runemark ${version} is published."
 
   release:
     name: GitHub Release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: publish-crate
+    needs: confirm-published
     runs-on: ubuntu-latest
     steps:
       - name: Download native binaries
