@@ -170,6 +170,11 @@ if outcome == Outcome::Unavailable {
 `/` filters the menu as you type, ranking names above descriptions and tight
 matches above scattered ones.
 
+`Layout::Tabs` puts the groups in a row above the list and shows only the
+active one's entries, for a list that would otherwise be taller than the
+terminal — `←` `→` and the digits switch groups. `Menu::with_summary` adds a
+second heading line for what the menu adds up to.
+
 `Menu::render` needs no feature — it is plain formatting, and it is what a
 non-interactive caller shows. A menu larger than the terminal is fitted to it:
 taller lists scroll, with `↑ N more` / `↓ N more` marking what is out of view,

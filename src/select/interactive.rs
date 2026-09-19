@@ -4,7 +4,7 @@ use std::io::{self, Write};
 
 use super::terminal::{Key, RawTerminal, escape};
 
-use super::{Menu, Outcome, SelectMode, Viewport};
+use super::{Menu, Outcome, SelectMode, View, Viewport};
 use crate::color::Console;
 
 /// Hides the cursor for as long as this value lives.
@@ -97,11 +97,13 @@ impl Menu {
     }
 
     fn act_on(&self, key: Key, state: &State) -> Action {
-        let matches = self.matching_items(state.query.as_deref());
+        let matches = self.matching_items(state.view());
         // An empty result set still draws; it just has nothing to act on.
         let last = matches.len().saturating_sub(1);
 
         match key {
+            Key::Left | Key::BackTab => self.step_tab(state, false),
+            Key::Right | Key::Tab => self.step_tab(state, true),
             // Wrapping beats stopping at the ends: the list is short and a dead
             // key at the bottom is the more annoying failure.
             Key::Up => Action::Update(state.at(if state.index == 0 {
@@ -120,7 +122,7 @@ impl Menu {
             // Escape leaves the search before it leaves the menu, so a mistyped
             // query costs one key rather than the whole selection.
             Key::Escape => match state.query {
-                Some(_) => Action::Update(State::default()),
+                Some(_) => Action::Update(state.browsing()),
                 None => Action::Finish(Outcome::Cancelled),
             },
             Key::Interrupt => Action::Finish(Outcome::Cancelled),
@@ -131,7 +133,7 @@ impl Menu {
                     Action::Update(state.searching(query))
                 }
                 // Backspacing out of an empty query leaves the search.
-                Some(_) => Action::Update(State::default()),
+                Some(_) => Action::Update(state.browsing()),
                 None => Action::Ignore,
             },
             Key::Char(pressed) => self.act_on_char(pressed, state),
@@ -151,6 +153,19 @@ impl Menu {
         if pressed == '/' {
             return Action::Update(state.searching(String::new()));
         }
+        // Digits before hints: a menu with tabs has given its digits away, and
+        // the tab is the one of the two the user can see on screen.
+        if self.active_tab(state.view()).is_some()
+            && let Some(digit) = pressed.to_digit(10)
+            && digit >= 1
+        {
+            let tab = digit as usize - 1;
+            return if tab < self.group_count() {
+                Action::Update(state.on_tab(tab))
+            } else {
+                Action::Ignore
+            };
+        }
         // Hint keys win over the built-in 'q', so a menu may bind 'q'.
         if let Some(hint) = self
             .hints
@@ -165,6 +180,25 @@ impl Menu {
         Action::Ignore
     }
 
+    /// Moves one tab along, wrapping, and puts the cursor on its first entry.
+    ///
+    /// Leaving the cursor where it was would land it on an unrelated entry of
+    /// the new group, or past its end.
+    fn step_tab(&self, state: &State, forward: bool) -> Action {
+        let Some(active) = self.active_tab(state.view()) else {
+            return Action::Ignore;
+        };
+        let last = self.group_count() - 1;
+        let next = if forward {
+            if active == last { 0 } else { active + 1 }
+        } else if active == 0 {
+            last
+        } else {
+            active - 1
+        };
+        Action::Update(state.on_tab(next))
+    }
+
     /// Draws the menu in place, overwriting the previous frame.
     fn draw(
         &self,
@@ -173,13 +207,12 @@ impl Menu {
         state: &State,
         view: &mut Scroll,
     ) -> io::Result<()> {
-        let query = state.query.as_deref();
         let viewport = view.advance(self, terminal, state);
 
         // Raw mode drops the implicit carriage return on newline, so the frame
         // is rendered normally and then given explicit ones.
         let frame = crate::internal::collect_to_string(|buf| {
-            self.write_frame(buf, console, Some(state.index), viewport, query)
+            self.write_frame(buf, console, Some(state.index), viewport, state.view())
         });
         let lines: Vec<&str> = frame.lines().collect();
 
@@ -222,10 +255,10 @@ impl Scroll {
         // A terminal that reports no size gets the whole menu, as before.
         let (height, columns) = terminal.size()?;
         let columns = (columns > 0).then_some(columns);
-        let query = state.query.as_deref();
-        let rows = menu.body_height(query);
+        let view = state.view();
+        let rows = menu.body_height(view);
         // One line stays free so the frame does not push its own top off screen.
-        let body = height.saturating_sub(menu.chrome_height(state.query.is_some()) + 1);
+        let body = height.saturating_sub(menu.chrome_height(view, columns) + 1);
 
         if body == 0 || rows == 0 || rows <= body {
             self.start = 0;
@@ -233,7 +266,7 @@ impl Scroll {
             return Some(Viewport::new(0, rows.max(1)).with_width(columns));
         }
 
-        let cursor = menu.row_of_item(state.index, query);
+        let cursor = menu.row_of_item(state.index, view);
         let mut start = self.start.min(rows - 1);
 
         if cursor < start {
@@ -253,18 +286,29 @@ impl Scroll {
 }
 
 /// Where the cursor is, and what is being searched for.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct State {
     index: usize,
     /// `None` outside search mode; `Some("")` once `/` has been pressed.
     query: Option<String>,
+    /// The tab being shown. Kept even while searching and while the menu has
+    /// no tabs at all, so leaving the search returns to the group it left.
+    tab: usize,
 }
 
 impl State {
+    fn view(&self) -> View<'_> {
+        View {
+            query: self.query.as_deref(),
+            tab: Some(self.tab),
+        }
+    }
+
     fn at(&self, index: usize) -> Self {
         Self {
             index,
             query: self.query.clone(),
+            tab: self.tab,
         }
     }
 
@@ -274,12 +318,138 @@ impl State {
         Self {
             index: 0,
             query: Some(query),
+            tab: self.tab,
+        }
+    }
+
+    /// Back to the list, on the tab the search was started from.
+    fn browsing(&self) -> Self {
+        Self {
+            index: 0,
+            query: None,
+            tab: self.tab,
+        }
+    }
+
+    fn on_tab(&self, tab: usize) -> Self {
+        Self {
+            index: 0,
+            query: self.query.clone(),
+            tab,
         }
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 enum Action {
     Update(State),
     Finish(Outcome),
     Ignore,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::select::{Group, Item, Layout};
+
+    fn tabbed() -> Menu {
+        let mut menu = Menu::new().with_layout(Layout::Tabs);
+        for n in 0..3 {
+            menu = menu.add_group(
+                Group::new(format!("Group{n}"))
+                    .add_item(Item::new(format!("a{n}"), format!("a{n}")))
+                    .add_item(Item::new(format!("b{n}"), format!("b{n}"))),
+            );
+        }
+        menu
+    }
+
+    fn after(menu: &Menu, state: &State, key: Key) -> State {
+        match menu.act_on(key, state) {
+            Action::Update(next) => next,
+            Action::Ignore => state.clone(),
+            Action::Finish(outcome) => panic!("expected no outcome, got {outcome:?}"),
+        }
+    }
+
+    #[test]
+    fn the_arrows_step_along_the_tabs_and_wrap() {
+        let menu = tabbed();
+        let state = after(&menu, &State::default(), Key::Right);
+        assert_eq!(state.tab, 1);
+        let state = after(&menu, &state, Key::Left);
+        assert_eq!(state.tab, 0);
+        let state = after(&menu, &state, Key::Left);
+        assert_eq!(state.tab, 2, "wrapping beats a dead key at the end");
+        assert_eq!(after(&menu, &state, Key::Right).tab, 0);
+    }
+
+    #[test]
+    fn tab_and_shift_tab_do_the_same() {
+        let menu = tabbed();
+        assert_eq!(after(&menu, &State::default(), Key::Tab).tab, 1);
+        assert_eq!(after(&menu, &State::default(), Key::BackTab).tab, 2);
+    }
+
+    #[test]
+    fn a_digit_jumps_straight_to_its_tab() {
+        let menu = tabbed();
+        assert_eq!(after(&menu, &State::default(), Key::Char('3')).tab, 2);
+    }
+
+    #[test]
+    fn a_digit_past_the_last_tab_does_nothing() {
+        let menu = tabbed();
+        let state = after(&menu, &State::default(), Key::Char('2'));
+        assert_eq!(after(&menu, &state, Key::Char('7')).tab, 1, "unchanged");
+    }
+
+    #[test]
+    fn switching_tabs_puts_the_cursor_on_the_first_entry() {
+        // Keeping the index would land it on an unrelated entry of the new
+        // group, or past its end.
+        let menu = tabbed();
+        let state = after(&menu, &State::default(), Key::Down);
+        assert_eq!(state.index, 1);
+        assert_eq!(after(&menu, &state, Key::Right).index, 0);
+    }
+
+    #[test]
+    fn a_flat_menu_ignores_the_tab_keys() {
+        let menu = tabbed().with_layout(Layout::Flat);
+        let state = after(&menu, &State::default(), Key::Right);
+        assert_eq!(state.tab, 0);
+        assert_eq!(state.index, 0);
+    }
+
+    #[test]
+    fn a_digit_inside_a_search_is_typed_rather_than_pressed() {
+        // A script named "build2" has to be reachable.
+        let menu = tabbed();
+        let state = after(&menu, &State::default(), Key::Char('/'));
+        let state = after(&menu, &state, Key::Char('2'));
+        assert_eq!(state.query.as_deref(), Some("2"));
+        assert_eq!(state.tab, 0, "and the tab is untouched");
+    }
+
+    #[test]
+    fn leaving_a_search_returns_to_the_tab_it_started_from() {
+        let menu = tabbed();
+        let state = after(&menu, &State::default(), Key::Char('3'));
+        let state = after(&menu, &state, Key::Char('/'));
+        let state = after(&menu, &state, Key::Escape);
+        assert_eq!(state.query, None);
+        assert_eq!(state.tab, 2);
+    }
+
+    #[test]
+    fn enter_selects_from_the_active_tab() {
+        let menu = tabbed();
+        let state = after(&menu, &State::default(), Key::Char('2'));
+        let state = after(&menu, &state, Key::Down);
+        assert_eq!(
+            menu.act_on(Key::Enter, &state),
+            Action::Finish(Outcome::Selected("b1".into()))
+        );
+    }
 }

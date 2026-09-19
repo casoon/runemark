@@ -8,7 +8,7 @@ The optional `select` feature adds a grouped menu. It is the one place where run
 from the terminal instead of only writing to it — a cursor has to react to keys.
 
 It drives the terminal directly: termios for raw mode, four escape sequences for drawing, and
-a small decoder for the six keys a menu needs. The only dependency is `libc`, and the
+a small decoder for the keys a menu needs. The only dependency is `libc`, and the
 interactive path is **Unix-only**. On other platforms `run` returns `Outcome::Unavailable`,
 the same result a pipeline gets, so a caller writes one code path with no `cfg`.
 
@@ -72,6 +72,8 @@ rest of the crate: the application owns the decision about its own streams.
 | Key | Effect |
 | --- | --- |
 | `↑` `↓` | Move the cursor, wrapping at both ends |
+| `←` `→`, `Tab`, `Shift-Tab` | Switch groups, with `Layout::Tabs` |
+| `1`–`9` | Jump to that group, with `Layout::Tabs` |
 | `Enter` | Select, returning `Outcome::Selected` |
 | `/` | Start filtering |
 | A hint key | Returns `Outcome::Hotkey`, matched case-insensitively |
@@ -79,7 +81,56 @@ rest of the crate: the application owns the decision about its own streams.
 | `Ctrl-C` | `Outcome::Cancelled` |
 
 A hint key wins over the built-in `q`, so a menu is free to bind `q` itself. `/` is reserved
-for the filter and cannot be bound.
+for the filter and cannot be bound. A tabbed menu has given its digits away: they reach its
+groups, and a hint bound to one is not seen there — the tab is the one of the two the user
+can see on screen.
+
+## Groups as tabs
+
+`Layout::Tabs` puts the groups in a row above the list and shows only the active one's
+entries:
+
+```rust
+# use runemark::{Group, Item, Layout, Menu};
+let menu = Menu::new()
+    .with_heading("web-casoon")
+    .with_note("pnpm")
+    .with_summary("27 scripts · 7 groups")
+    .with_layout(Layout::Tabs)
+    .add_group(Group::new("Development").add_item(Item::new("dev", "dev")))
+    .add_group(Group::new("Build").add_item(Item::new("build", "build")));
+```
+
+```
+web-casoon                                            pnpm
+  27 scripts · 7 groups
+
+  1 Development   2 Build   3 Preview   4 Deploy   5 Quality   …
+    ─────────────
+› dev              Start the site
+  dev:landings
+```
+
+**When to ask for it is the application's call.** A menu knows how many entries it has, not
+how much of the screen its caller is willing to spend, and a layout that flipped on its own
+whenever a window was resized would rearrange the list under a cursor already moving through
+it.
+
+The rule under the active tab is not decoration. With colour off it is the only thing on the
+screen saying which group the entries below belong to.
+
+Tabs past the ninth carry no digit — there is none left to offer — and the arrows still reach
+them. When the row is wider than the terminal it is windowed like the body, growing outwards
+from the active tab so that switching along the row scrolls it rather than jumping it. Tabs
+are dropped from the ends rather than shortened: half a group name is no longer the word its
+digit belongs to.
+
+A single group gets no tab row. There is nothing to switch to, and the row would spend two
+lines repeating the heading.
+
+`Menu::render` ignores the layout and lists every group. Nothing on the other end of a pipe
+can press a key to reach the second tab, so hiding one there would lose entries rather than
+save lines.
 
 ## Filtering
 
@@ -90,6 +141,11 @@ screen. `Menu::render` shows no keys at all, since a pipe has no keyboard.
 
 `/` starts a filter; typing narrows the menu, `Backspace` widens it again. Groups with nothing
 left disappear, and the cursor sits on the best match.
+
+The filter spans **every** group in either layout, and a tabbed menu leaves its tab row while
+it runs. Tabs answer "I know roughly where"; the filter answers "I know exactly what", which
+is the case tabs are worst at — a query matching four groups shows all four together. Leaving
+the filter returns to the tab it was started from.
 
 `Esc` leaves the filter before it leaves the menu, so a mistyped query costs one key rather
 than the whole selection. A second `Esc` cancels. While filtering, every printable key is part
@@ -114,7 +170,8 @@ Where the label column leaves too little room for a description to say anything,
 description is left out instead of cut to a stub.
 
 A menu taller than the terminal is windowed: the body scrolls, and `↑ N more` / `↓ N more`
-mark what is out of view. The window moves the least amount that keeps the cursor visible, so
+mark what is out of view. `Layout::Tabs` is the other answer to the same problem, for a list
+whose groups mean something: it pages by group instead of scrolling past every one of them. The window moves the least amount that keeps the cursor visible, so
 short cursor moves do not slide the whole screen.
 
 The size comes from the terminal itself, re-read on every frame, so resizing the window

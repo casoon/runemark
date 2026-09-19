@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-19
+
+### Added
+
+- `Layout::Tabs` arranges a menu's groups as a row of tabs, showing only the
+  active group's entries. For a list that would otherwise be taller than the
+  terminal: `←` `→`, `Tab` / `Shift-Tab` and the digits `1`–`9` switch groups,
+  and the cursor lands on the first entry of the one it arrives at. A rule
+  under the active tab marks it, so the group is still named with colour off.
+  The application decides when to ask for it — a menu knows how many entries it
+  has, not how much of the screen its caller is willing to spend.
+- `Menu::with_summary` adds a second heading line, for what the menu adds up to
+  — how many entries, how many groups — which the list itself only says by
+  being counted.
+
+### Changed
+
+- `Menu::render` ignores `Layout::Tabs` and lists every group. Nothing on the
+  other end of a pipe can press a key to reach the second tab, so hiding one
+  there would lose entries rather than save lines.
+- The search spans every group in either layout, and leaves the tab row while
+  it runs. Tabs answer "I know roughly where"; the filter answers "I know
+  exactly what", which is the case tabs are worst at.
+
 ## [0.6.0] - 2026-09-19
 
 ### Added

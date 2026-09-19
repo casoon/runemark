@@ -28,6 +28,11 @@ pub mod escape {
 pub enum Key {
     Up,
     Down,
+    Left,
+    Right,
+    /// Tab, and Shift-Tab as [`Key::BackTab`].
+    Tab,
+    BackTab,
     Enter,
     Escape,
     Interrupt,
@@ -174,6 +179,7 @@ impl RawTerminal {
         match byte {
             0x03 => Ok(Key::Interrupt),
             b'\r' | b'\n' => Ok(Key::Enter),
+            0x09 => Ok(Key::Tab),
             0x1b => self.read_escape(),
             // Terminals send either for Backspace depending on their settings.
             0x08 | 0x7f => Ok(Key::Backspace),
@@ -208,6 +214,11 @@ impl RawTerminal {
         match third {
             b'A' => Ok(Key::Up),
             b'B' => Ok(Key::Down),
+            b'C' => Ok(Key::Right),
+            b'D' => Ok(Key::Left),
+            // Shift-Tab. It is the one CSI sequence here with no parameters,
+            // so it is recognised beside the cursor keys rather than skipped.
+            b'Z' => Ok(Key::BackTab),
             // A parameterised sequence such as `ESC [ 1 ; 2 A` or `ESC [ 5 ~`.
             // Consume it so its tail is not mistaken for typed characters.
             b'0'..=b'9' | b';' => {

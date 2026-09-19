@@ -48,6 +48,25 @@ impl SelectMode {
     }
 }
 
+/// How a menu arranges its groups.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Layout {
+    /// Every group under its own heading, one list.
+    #[default]
+    Flat,
+    /// Groups as a row of tabs, with only the active one's entries below.
+    ///
+    /// For a list that would otherwise be taller than the terminal. The
+    /// application decides when that is — a menu knows how many entries it
+    /// has, not how much of the screen its caller is willing to spend.
+    ///
+    /// Only the interactive path arranges itself this way. [`Menu::render`]
+    /// lists every group, because nothing on the other end of a pipe can
+    /// press a key to reach the second tab.
+    Tabs,
+}
+
 /// One selectable entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
@@ -134,6 +153,15 @@ const MARKER_WIDTH: usize = 2;
 const GAP_WIDTH: usize = 2;
 /// Below this, a description says nothing and is left out instead.
 const MIN_DESCRIPTION: usize = 12;
+/// Columns between two tabs.
+const TAB_GAP: usize = 3;
+/// Columns between two keys in the footer.
+const FOOTER_GAP: usize = 3;
+/// What a dropped run of tabs costs to mark: the ellipsis and its gap.
+const TAB_ELLIPSIS: usize = 1 + TAB_GAP;
+/// Tabs beyond this many have no digit left to select them; the arrow keys
+/// still reach them.
+const TAB_KEYS: usize = 9;
 
 /// Shortens `text` to `max` columns, marking the cut with an ellipsis.
 ///
@@ -161,6 +189,98 @@ fn shorten(text: &str, max: usize) -> std::borrow::Cow<'_, str> {
     }
     out.push('…');
     std::borrow::Cow::Owned(out)
+}
+
+/// The stretch of tabs to draw, always containing `active`.
+///
+/// Tabs are dropped from the ends rather than shortened: half a group name is
+/// no longer the word its digit belongs to. The active tab is the seed and the
+/// window grows outwards from it, so switching along the row scrolls it rather
+/// than jumping the whole thing.
+fn tab_window(labels: &[String], active: usize, columns: Option<usize>) -> std::ops::Range<usize> {
+    let all = 0..labels.len();
+    let Some(columns) = columns else {
+        return all;
+    };
+    let room = columns.saturating_sub(MARKER_WIDTH);
+
+    let width = |range: &std::ops::Range<usize>| {
+        let text: usize = labels[range.clone()].iter().map(|l| l.width()).sum();
+        let gaps = TAB_GAP * range.len().saturating_sub(1);
+        let before = if range.start > 0 { TAB_ELLIPSIS } else { 0 };
+        let after = if range.end < labels.len() {
+            TAB_ELLIPSIS
+        } else {
+            0
+        };
+        text + gaps + before + after
+    };
+
+    if width(&all) <= room {
+        return all;
+    }
+
+    let mut window = active..active + 1;
+    loop {
+        let mut grew = false;
+        if window.end < labels.len() {
+            let wider = window.start..window.end + 1;
+            if width(&wider) <= room {
+                window = wider;
+                grew = true;
+            }
+        }
+        if window.start > 0 {
+            let wider = window.start - 1..window.end;
+            if width(&wider) <= room {
+                window = wider;
+                grew = true;
+            }
+        }
+        if !grew {
+            return window;
+        }
+    }
+}
+
+/// How the footer's keys break across lines at `columns`.
+///
+/// The footer is laid out rather than written straight out because a line that
+/// wrapped would occupy more rows than the frame counted, and the redraw moves
+/// the cursor up by that count — a wrapped footer leaves a stale line behind on
+/// every keypress. Keys are never dropped to avoid it: an unmentioned key is a
+/// key nobody presses, which is the problem the footer exists to solve.
+fn footer_lines(keys: &[(String, &str)], columns: Option<usize>) -> Vec<std::ops::Range<usize>> {
+    let all = 0..keys.len();
+    let Some(columns) = columns else {
+        return vec![all];
+    };
+
+    let width = |(key, label): &(String, &str)| key.width() + 1 + label.width();
+    let mut lines = Vec::new();
+    let mut start = 0;
+    let mut used = 0;
+
+    for (at, key) in keys.iter().enumerate() {
+        let next = if at == start {
+            width(key)
+        } else {
+            used + FOOTER_GAP + width(key)
+        };
+        // A single key wider than the terminal still gets its own line: there
+        // is nowhere narrower to put it.
+        if at > start && next > columns {
+            lines.push(start..at);
+            start = at;
+            used = width(key);
+        } else {
+            used = next;
+        }
+    }
+    if start < keys.len() {
+        lines.push(start..keys.len());
+    }
+    lines
 }
 
 /// How well an item answers a search, lower being better.
@@ -215,6 +335,16 @@ fn subsequence_span(text: &str, query: &str) -> Option<usize> {
     }
 
     Some(last - first.unwrap_or(last) + 1)
+}
+
+/// What the body is showing: a search, a tab, or everything.
+#[derive(Debug, Clone, Copy, Default)]
+struct View<'a> {
+    query: Option<&'a str>,
+    /// The active tab, or `None` for the flat listing. A non-interactive
+    /// caller always passes `None`: it cannot switch tabs, so it is shown
+    /// every group.
+    tab: Option<usize>,
 }
 
 /// One drawn line of the menu body.
@@ -290,8 +420,11 @@ pub struct Menu {
     heading: Option<String>,
     /// Shown at the end of the heading line, for context such as a detected tool.
     note: Option<String>,
+    /// A second heading line, for what the menu counted up.
+    summary: Option<String>,
     groups: Vec<Group>,
     hints: Vec<Hint>,
+    layout: Layout,
 }
 
 impl Menu {
@@ -306,6 +439,21 @@ impl Menu {
 
     pub fn with_note(mut self, note: impl Into<String>) -> Self {
         self.note = Some(note.into());
+        self
+    }
+
+    /// A second heading line, under the first.
+    ///
+    /// For what the menu adds up to — how many entries, how many groups —
+    /// which the list itself only says by being counted.
+    pub fn with_summary(mut self, summary: impl Into<String>) -> Self {
+        self.summary = Some(summary.into());
+        self
+    }
+
+    /// How the groups are arranged. See [`Layout`].
+    pub fn with_layout(mut self, layout: Layout) -> Self {
+        self.layout = layout;
         self
     }
 
@@ -333,6 +481,91 @@ impl Menu {
         self.len() == 0
     }
 
+    /// Which tab `view` is showing, or `None` for the flat listing.
+    ///
+    /// A single group is no reason for a tab row: there is nothing to switch
+    /// to, and the row would cost two lines to say what the heading says.
+    fn active_tab(&self, view: View<'_>) -> Option<usize> {
+        if self.layout != Layout::Tabs || self.groups.len() < 2 || view.query.is_some() {
+            return None;
+        }
+        // A tab index outside the menu is clamped rather than refused: the
+        // caller holds it across redraws, and a menu may be rebuilt smaller.
+        Some(view.tab?.min(self.groups.len() - 1))
+    }
+
+    /// How many groups there are, for the interactive path's tab arithmetic.
+    #[cfg(any(all(feature = "select", unix), test))]
+    fn group_count(&self) -> usize {
+        self.groups.len()
+    }
+
+    /// Each tab as drawn, with the digit that selects it.
+    fn tab_labels(&self) -> Vec<String> {
+        self.groups
+            .iter()
+            .enumerate()
+            .map(|(index, group)| {
+                if index < TAB_KEYS {
+                    format!("{} {}", index + 1, group.label)
+                } else {
+                    group.label.clone()
+                }
+            })
+            .collect()
+    }
+
+    /// Writes the tab row and the rule marking the active tab.
+    ///
+    /// The rule is not decoration. With colour off it is the only thing on the
+    /// screen saying which group the entries below belong to.
+    fn write_tabs(
+        &self,
+        writer: &mut (impl std::io::Write + ?Sized),
+        console: Console,
+        active: usize,
+        columns: Option<usize>,
+    ) -> std::io::Result<()> {
+        let labels = self.tab_labels();
+        let window = tab_window(&labels, active, columns);
+
+        // The row lines up with the entry labels below it, past the marker.
+        let mut column = MARKER_WIDTH;
+        let mut underline = None;
+        write!(writer, "{:MARKER_WIDTH$}", "")?;
+
+        if window.start > 0 {
+            console.write_paint(Tone::Muted, "…", writer)?;
+            write!(writer, "{:TAB_GAP$}", "")?;
+            column += TAB_ELLIPSIS;
+        }
+        for index in window.clone() {
+            if index > window.start {
+                write!(writer, "{:TAB_GAP$}", "")?;
+                column += TAB_GAP;
+            }
+            let label = &labels[index];
+            if index == active {
+                console.write_paint(Tone::Title, label, writer)?;
+                underline = Some((column, label.width()));
+            } else {
+                console.write_paint(Tone::Muted, label, writer)?;
+            }
+            column += label.width();
+        }
+        if window.end < labels.len() {
+            write!(writer, "{:TAB_GAP$}", "")?;
+            console.write_paint(Tone::Muted, "…", writer)?;
+        }
+        writeln!(writer)?;
+
+        if let Some((at, width)) = underline {
+            write!(writer, "{:at$}", "")?;
+            console.write_paint(Tone::Success, "─".repeat(width), writer)?;
+        }
+        writeln!(writer)
+    }
+
     /// The label column width, so descriptions line up across all groups.
     fn label_width(&self) -> usize {
         self.items()
@@ -345,7 +578,9 @@ impl Menu {
     ///
     /// This is what a non-interactive caller shows, and what tests assert on.
     pub fn render(&self, console: Console) -> String {
-        crate::internal::collect_to_string(|buf| self.write_frame(buf, console, None, None, None))
+        crate::internal::collect_to_string(|buf| {
+            self.write_frame(buf, console, None, None, View::default())
+        })
     }
 
     /// The body as a flat list of lines, so a viewport can window over it.
@@ -353,12 +588,24 @@ impl Menu {
     /// With a `query`, only matching items appear, best first, and a group with
     /// nothing left disappears with them. Item indices are positions in that
     /// filtered order, which is what the cursor counts.
-    fn body_rows(&self, query: Option<&str>) -> Vec<Row<'_>> {
+    fn body_rows(&self, view: View<'_>) -> Vec<Row<'_>> {
         // An empty query is not a search result: ranking it would sort the menu
         // alphabetically, which is the arrangement the grouping exists to avoid.
-        let query = query.filter(|query| !query.is_empty());
+        let query = view.query.filter(|query| !query.is_empty());
 
         let Some(query) = query else {
+            // One tab's entries carry no heading: the tab row above already
+            // names the group, and repeating it would spend a line saying so
+            // twice on the screen that ran out of lines.
+            if let Some(tab) = self.active_tab(view) {
+                return self.groups[tab]
+                    .items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| Row::Item(item, index))
+                    .collect();
+            }
+
             let mut rows = Vec::with_capacity(self.groups.len() + self.len());
             let mut index = 0;
             for group in &self.groups {
@@ -397,8 +644,8 @@ impl Menu {
     }
 
     /// The items a `query` matches, in the order they are drawn.
-    fn matching_items(&self, query: Option<&str>) -> Vec<&Item> {
-        self.body_rows(query)
+    fn matching_items(&self, view: View<'_>) -> Vec<&Item> {
+        self.body_rows(view)
             .into_iter()
             .filter_map(|row| match row {
                 Row::Item(item, _) => Some(item),
@@ -418,9 +665,10 @@ impl Menu {
         console: Console,
         cursor: Option<usize>,
         viewport: Option<Viewport>,
-        query: Option<&str>,
+        view: View<'_>,
     ) -> std::io::Result<()> {
         let columns = viewport.and_then(|viewport| viewport.width);
+        let query = view.query;
 
         if let Some(heading) = &self.heading {
             let note_room = self
@@ -434,7 +682,19 @@ impl Menu {
                 console.write_paint(Tone::Muted, note, writer)?;
             }
             writeln!(writer)?;
+        }
+        if let Some(summary) = &self.summary {
+            let room = columns.map_or(usize::MAX, |columns| columns.saturating_sub(MARKER_WIDTH));
+            write!(writer, "{:MARKER_WIDTH$}", "")?;
+            console.write_paint(Tone::Muted, shorten(summary, room), writer)?;
             writeln!(writer)?;
+        }
+        if self.heading.is_some() || self.summary.is_some() {
+            writeln!(writer)?;
+        }
+
+        if let Some(active) = self.active_tab(view) {
+            self.write_tabs(writer, console, active, columns)?;
         }
 
         let width = self.label_width().min(
@@ -442,7 +702,7 @@ impl Menu {
             // description and pushes it off screen entirely.
             columns.map_or(usize::MAX, |columns| columns.saturating_sub(MARKER_WIDTH)),
         );
-        let rows = self.body_rows(query);
+        let rows = self.body_rows(view);
         let window = viewport.map_or(0..rows.len(), |viewport| viewport.window(rows.len()));
 
         if window.start > 0 {
@@ -501,37 +761,53 @@ impl Menu {
             writeln!(writer)?;
             console.write_paint(Tone::Success, "/", writer)?;
             write!(writer, " ")?;
+            // Two columns went to "/ ". What is left bounds the query, so a
+            // long one cannot wrap and throw the redraw's line count off.
+            let room = columns.map_or(usize::MAX, |columns| columns.saturating_sub(2));
             if query.is_empty() {
-                console.write_paint(Tone::Muted, "type to filter", writer)?;
+                console.write_paint(Tone::Muted, shorten("type to filter", room), writer)?;
             } else {
-                console.write_paint(Tone::Title, query, writer)?;
+                console.write_paint(Tone::Title, shorten(query, room), writer)?;
             }
             writeln!(writer)?;
-        } else if !self.hints.is_empty() || self.offers_search(cursor) {
-            writeln!(writer)?;
-            let mut written = 0;
-            // `/` is reserved for the filter and cannot be bound as a hint, so
-            // nothing else can advertise it. A key the menu answers to but
-            // never mentions is a key nobody presses.
-            if self.offers_search(cursor) {
-                console.write_paint(Tone::Success, '/', writer)?;
-                write!(writer, " ")?;
-                console.write_paint(Tone::Muted, "search", writer)?;
-                written += 1;
-            }
-            for hint in &self.hints {
-                if written > 0 {
-                    write!(writer, "   ")?;
+        } else {
+            let keys = self.footer_keys(view, cursor);
+            if !keys.is_empty() {
+                writeln!(writer)?;
+                for line in footer_lines(&keys, columns) {
+                    for (at, (key, label)) in keys[line].iter().enumerate() {
+                        if at > 0 {
+                            write!(writer, "{:FOOTER_GAP$}", "")?;
+                        }
+                        console.write_paint(Tone::Success, key, writer)?;
+                        write!(writer, " ")?;
+                        console.write_paint(Tone::Muted, label, writer)?;
+                    }
+                    writeln!(writer)?;
                 }
-                console.write_paint(Tone::Success, hint.key, writer)?;
-                write!(writer, " ")?;
-                console.write_paint(Tone::Muted, &hint.label, writer)?;
-                written += 1;
             }
-            writeln!(writer)?;
         }
 
         Ok(())
+    }
+
+    /// The keys the footer offers, in the order they are shown.
+    ///
+    /// `/` is reserved for the filter and cannot be bound as a hint, so
+    /// nothing else can advertise it. A key the menu answers to but never
+    /// mentions is a key nobody presses.
+    fn footer_keys(&self, view: View<'_>, cursor: Option<usize>) -> Vec<(String, &str)> {
+        let mut keys = Vec::with_capacity(self.hints.len() + 2);
+        if self.active_tab(view).is_some() {
+            keys.push(("\u{2190}\u{2192}".to_owned(), "group"));
+        }
+        if self.offers_search(cursor) {
+            keys.push(("/".to_owned(), "search"));
+        }
+        for hint in &self.hints {
+            keys.push((hint.key.to_string(), hint.label.as_str()));
+        }
+        keys
     }
 
     /// Whether this frame should advertise the filter.
@@ -549,8 +825,8 @@ impl Menu {
 
     /// The body row showing item `index`, for keeping the cursor in view.
     #[cfg(any(all(feature = "select", unix), test))]
-    fn row_of_item(&self, index: usize, query: Option<&str>) -> usize {
-        self.body_rows(query)
+    fn row_of_item(&self, index: usize, view: View<'_>) -> usize {
+        self.body_rows(view)
             .iter()
             .position(|row| matches!(row, Row::Item(_, item) if *item == index))
             .unwrap_or(0)
@@ -558,25 +834,34 @@ impl Menu {
 
     /// Body rows in total, for sizing a viewport.
     #[cfg(any(all(feature = "select", unix), test))]
-    fn body_height(&self, query: Option<&str>) -> usize {
+    fn body_height(&self, view: View<'_>) -> usize {
         // The "no matches" line occupies the body when nothing is left.
-        self.body_rows(query)
+        self.body_rows(view)
             .len()
-            .max(usize::from(query.is_some()))
+            .max(usize::from(view.query.is_some()))
     }
 
     /// Lines the menu spends on anything but the body.
     #[cfg(any(all(feature = "select", unix), test))]
-    fn chrome_height(&self, searching: bool) -> usize {
-        let heading = if self.heading.is_some() { 2 } else { 0 };
-        // Interactive frames always carry a footer: the query line while
-        // searching, otherwise at least the filter affordance.
-        let footer = if searching || !self.hints.is_empty() || !self.is_empty() {
+    fn chrome_height(&self, view: View<'_>, columns: Option<usize>) -> usize {
+        let lines = usize::from(self.heading.is_some()) + usize::from(self.summary.is_some());
+        // Whatever the heading block wrote, plus the blank line after it.
+        let heading = if lines > 0 { lines + 1 } else { 0 };
+        // The tab row and the rule under the active tab.
+        let tabs = usize::from(self.active_tab(view).is_some()) * 2;
+        // The footer is measured with the same layout that writes it. Guessing
+        // one line where two get written is what makes the redraw eat a row.
+        let footer = if view.query.is_some() {
             2
         } else {
-            0
+            let keys = self.footer_keys(view, Some(0));
+            if keys.is_empty() {
+                0
+            } else {
+                1 + footer_lines(&keys, columns).len()
+            }
         };
-        heading + footer
+        heading + tabs + footer
     }
 }
 
@@ -617,6 +902,25 @@ mod tests {
         Console::new(ColorMode::Never, false)
     }
 
+    /// The flat listing: every group, no search.
+    fn flat() -> View<'static> {
+        View::default()
+    }
+
+    fn searching(query: &str) -> View<'_> {
+        View {
+            query: Some(query),
+            tab: None,
+        }
+    }
+
+    fn on_tab(tab: usize) -> View<'static> {
+        View {
+            query: None,
+            tab: Some(tab),
+        }
+    }
+
     fn menu() -> Menu {
         Menu::new()
             .with_heading("casoon.dev")
@@ -646,7 +950,7 @@ mod tests {
         // nothing will.
         let menu = long_menu(20).add_hint(Hint::new('U', "Updates"));
         let interactive = crate::internal::collect_to_string(|buf| {
-            menu.write_frame(buf, plain(), Some(0), None, None)
+            menu.write_frame(buf, plain(), Some(0), None, flat())
         });
         assert!(interactive.contains("/ search"));
         assert!(
@@ -665,7 +969,7 @@ mod tests {
     fn an_empty_menu_advertises_nothing() {
         let empty = Menu::new().with_heading("nothing");
         let shown = crate::internal::collect_to_string(|buf| {
-            empty.write_frame(buf, plain(), Some(0), None, None)
+            empty.write_frame(buf, plain(), Some(0), None, flat())
         });
         assert!(!shown.contains("search"));
     }
@@ -679,7 +983,7 @@ mod tests {
                 .add_item(Item::new("yes", "Run deploy")),
         );
         let shown = crate::internal::collect_to_string(|buf| {
-            confirm.write_frame(buf, plain(), Some(0), None, None)
+            confirm.write_frame(buf, plain(), Some(0), None, flat())
         });
         assert!(!shown.contains("search"));
     }
@@ -690,7 +994,7 @@ mod tests {
         let short = long_menu(3);
         assert_eq!(searched(&short, "t2"), ["t2"]);
         let shown = crate::internal::collect_to_string(|buf| {
-            short.write_frame(buf, plain(), Some(0), None, Some("t2"))
+            short.write_frame(buf, plain(), Some(0), None, searching("t2"))
         });
         assert!(shown.contains("/ t2"));
     }
@@ -699,7 +1003,7 @@ mod tests {
     fn a_long_menu_still_advertises_it() {
         let long = long_menu(20);
         let shown = crate::internal::collect_to_string(|buf| {
-            long.write_frame(buf, plain(), Some(0), None, None)
+            long.write_frame(buf, plain(), Some(0), None, flat())
         });
         assert!(shown.contains("/ search"));
     }
@@ -754,7 +1058,7 @@ mod tests {
                 plain(),
                 Some(0),
                 Some(Viewport::new(start, height)),
-                None,
+                flat(),
             )
         })
     }
@@ -766,7 +1070,7 @@ mod tests {
                 plain(),
                 Some(0),
                 Some(Viewport::new(0, 999).with_width(Some(columns))),
-                None,
+                flat(),
             )
         })
     }
@@ -820,7 +1124,7 @@ mod tests {
         // The whole point: the frame must not outgrow the terminal, or the
         // redraw moves the cursor further up than there are lines.
         let menu = long_menu(40);
-        let chrome = menu.chrome_height(false);
+        let chrome = menu.chrome_height(flat(), None);
         for start in [0, 1, 7, 20, 39] {
             for height in [3, 5, 10, 25] {
                 let body = windowed(&menu, start, height).lines().count() - chrome;
@@ -835,7 +1139,7 @@ mod tests {
     #[test]
     fn a_window_always_draws_something() {
         let menu = long_menu(40);
-        let chrome = menu.chrome_height(false);
+        let chrome = menu.chrome_height(flat(), None);
         for height in [1, 2, 3] {
             let body = windowed(&menu, 0, height).lines().count() - chrome;
             assert!(body >= 1, "height {height} drew nothing");
@@ -846,22 +1150,22 @@ mod tests {
     fn row_lookup_accounts_for_group_labels() {
         let menu = menu();
         // Rows: Development, dev, dev:landings, Build, build
-        assert_eq!(menu.row_of_item(0, None), 1);
-        assert_eq!(menu.row_of_item(2, None), 4);
-        assert_eq!(menu.body_height(None), 5);
+        assert_eq!(menu.row_of_item(0, flat()), 1);
+        assert_eq!(menu.row_of_item(2, flat()), 4);
+        assert_eq!(menu.body_height(flat()), 5);
     }
 
     #[test]
     fn chrome_height_counts_heading_and_hints() {
-        assert_eq!(menu().chrome_height(false), 4);
-        assert_eq!(Menu::new().chrome_height(false), 0);
+        assert_eq!(menu().chrome_height(flat(), None), 4);
+        assert_eq!(Menu::new().chrome_height(flat(), None), 0);
         assert_eq!(
-            Menu::new().with_heading("h").chrome_height(false),
+            Menu::new().with_heading("h").chrome_height(flat(), None),
             2,
             "heading plus its blank line"
         );
         assert_eq!(
-            Menu::new().chrome_height(true),
+            Menu::new().chrome_height(searching(""), None),
             2,
             "the query line needs room even without hints"
         );
@@ -873,12 +1177,12 @@ mod tests {
         // row below the window, because the scroll maths and the window maths
         // disagreed about how many lines the indicators cost.
         let menu = long_menu(40);
-        let rows = menu.body_height(None);
+        let rows = menu.body_height(flat());
 
         for height in [4, 6, 11, 21, 30] {
             let mut start = 0usize;
             for index in 0..menu.len() {
-                let cursor = menu.row_of_item(index, None);
+                let cursor = menu.row_of_item(index, flat());
                 if cursor < start {
                     start = cursor;
                 }
@@ -949,7 +1253,7 @@ mod tests {
     }
 
     fn searched(menu: &Menu, query: &str) -> Vec<String> {
-        menu.matching_items(Some(query))
+        menu.matching_items(searching(query))
             .into_iter()
             .map(|item| item.label.clone())
             .collect()
@@ -1018,10 +1322,14 @@ mod tests {
         // answer.
         let menu = script_menu();
         let shown = crate::internal::collect_to_string(|buf| {
-            menu.write_frame(buf, plain(), Some(0), None, Some("qqqq"))
+            menu.write_frame(buf, plain(), Some(0), None, searching("qqqq"))
         });
         assert!(shown.contains("no matches"));
-        assert_eq!(menu.body_height(Some("qqqq")), 1, "the notice needs a line");
+        assert_eq!(
+            menu.body_height(searching("qqqq")),
+            1,
+            "the notice needs a line"
+        );
     }
 
     #[test]
@@ -1039,7 +1347,7 @@ mod tests {
     #[test]
     fn a_group_with_no_matches_is_not_drawn() {
         let menu = script_menu();
-        let rows = menu.body_rows(Some("check"));
+        let rows = menu.body_rows(searching("check"));
         let groups: Vec<&str> = rows
             .iter()
             .filter_map(|row| match row {
@@ -1053,7 +1361,7 @@ mod tests {
     #[test]
     fn filtered_item_indices_are_positions_in_the_result() {
         let menu = script_menu();
-        let rows = menu.body_rows(Some("landings"));
+        let rows = menu.body_rows(searching("landings"));
         let indices: Vec<usize> = rows
             .iter()
             .filter_map(|row| match row {
@@ -1062,6 +1370,311 @@ mod tests {
             })
             .collect();
         assert_eq!(indices, [0, 1], "the cursor counts matches, not all items");
+    }
+
+    fn tabbed(groups: usize) -> Menu {
+        let mut menu = Menu::new()
+            .with_heading("web-casoon")
+            .with_layout(Layout::Tabs);
+        for n in 0..groups {
+            menu = menu.add_group(
+                Group::new(format!("Group{n}"))
+                    .add_item(Item::new(format!("a{n}"), format!("a{n}")))
+                    .add_item(Item::new(format!("b{n}"), format!("b{n}"))),
+            );
+        }
+        menu
+    }
+
+    fn framed(menu: &Menu, view: View<'_>) -> String {
+        crate::internal::collect_to_string(|buf| {
+            menu.write_frame(buf, plain(), Some(0), None, view)
+        })
+    }
+
+    #[test]
+    fn a_tab_shows_only_its_own_group() {
+        let menu = tabbed(3);
+        let shown = framed(&menu, on_tab(1));
+        assert!(shown.contains("a1") && shown.contains("b1"));
+        assert!(!shown.contains("a0"), "the other tabs' entries stay hidden");
+        assert!(!shown.contains("a2"));
+    }
+
+    #[test]
+    fn a_tab_repeats_no_group_heading() {
+        // The tab row already names the group; a heading under it would spend
+        // a line saying so twice on the screen that ran out of lines.
+        let menu = tabbed(3);
+        let rows = menu.body_rows(on_tab(0));
+        assert!(rows.iter().all(|row| matches!(row, Row::Item(..))));
+    }
+
+    #[test]
+    fn a_tab_counts_its_own_entries_from_zero() {
+        let indices: Vec<usize> = tabbed(3)
+            .body_rows(on_tab(2))
+            .iter()
+            .filter_map(|row| match row {
+                Row::Item(_, index) => Some(*index),
+                Row::Group(_) => None,
+            })
+            .collect();
+        assert_eq!(indices, [0, 1], "the cursor counts what is on screen");
+    }
+
+    #[test]
+    fn a_pipe_is_shown_every_group_despite_the_tab_layout() {
+        // Nothing on the other end of a pipe can press a key to reach the
+        // second tab, so hiding it there would lose entries.
+        let shown = tabbed(3).render(plain());
+        for n in 0..3 {
+            assert!(shown.contains(&format!("a{n}")), "group {n} is listed");
+        }
+        assert!(!shown.contains("───"), "and no tab row is drawn");
+    }
+
+    #[test]
+    fn the_active_tab_is_marked_without_colour() {
+        // With colour off the rule is the only thing saying which group the
+        // entries below belong to.
+        let lines: Vec<String> = framed(&tabbed(3), on_tab(1))
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        let row = lines.iter().position(|l| l.contains("2 Group1")).unwrap();
+        let rule = &lines[row + 1];
+        let at = lines[row].find("2 Group1").unwrap();
+        assert_eq!(
+            rule.find('─'),
+            Some(at),
+            "the rule starts under the active tab"
+        );
+        assert_eq!(rule.trim().chars().count(), "2 Group1".width());
+    }
+
+    #[test]
+    fn tabs_are_numbered_up_to_nine() {
+        let shown = framed(&tabbed(11), on_tab(0));
+        let row = shown.lines().find(|l| l.contains("1 Group0")).unwrap();
+        assert!(row.contains("9 Group8"));
+        assert!(
+            !row.contains("10 Group9"),
+            "past nine there is no digit left to offer"
+        );
+    }
+
+    #[test]
+    fn one_group_gets_no_tab_row() {
+        // There is nothing to switch to, and the row would cost two lines to
+        // repeat the heading.
+        let menu = Menu::new()
+            .with_heading("one")
+            .with_layout(Layout::Tabs)
+            .add_group(Group::new("Scripts").add_item(Item::new("dev", "dev")));
+        assert!(menu.active_tab(on_tab(0)).is_none());
+        assert!(framed(&menu, on_tab(0)).contains("Scripts"), "as a heading");
+    }
+
+    #[test]
+    fn a_tab_index_past_the_end_is_clamped() {
+        // The caller holds the index across redraws, and a menu may be rebuilt
+        // smaller between them.
+        assert_eq!(tabbed(3).active_tab(on_tab(9)), Some(2));
+    }
+
+    #[test]
+    fn searching_leaves_the_tabs_and_spans_all_of_them() {
+        let menu = tabbed(3);
+        assert!(menu.active_tab(searching("a")).is_none());
+        let shown = framed(&menu, searching("a"));
+        for n in 0..3 {
+            assert!(
+                shown.contains(&format!("a{n}")),
+                "group {n} is searched too"
+            );
+        }
+    }
+
+    #[test]
+    fn a_narrow_tab_row_keeps_the_active_tab_visible() {
+        let labels: Vec<String> = (0..9).map(|n| format!("{} Group{n}", n + 1)).collect();
+        for active in 0..labels.len() {
+            for columns in [20, 30, 45, 80] {
+                let window = tab_window(&labels, active, Some(columns));
+                assert!(
+                    window.contains(&active),
+                    "width {columns}, tab {active}: {window:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_tab_row_never_exceeds_the_given_width() {
+        let menu = tabbed(9);
+        for columns in [20, 30, 45, 80, 120] {
+            let shown = crate::internal::collect_to_string(|buf| {
+                menu.write_frame(
+                    buf,
+                    plain(),
+                    Some(0),
+                    Some(Viewport::new(0, 999).with_width(Some(columns))),
+                    on_tab(4),
+                )
+            });
+            for line in shown.lines() {
+                assert!(
+                    line.width() <= columns,
+                    "width {columns}: line of {} columns: {line:?}",
+                    line.width()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_summary_gets_its_own_line_under_the_heading() {
+        let menu = Menu::new()
+            .with_heading("web-casoon")
+            .with_note("pnpm")
+            .with_summary("27 scripts · 7 groups")
+            .add_group(Group::new("G").add_item(Item::new("dev", "dev")));
+        let rendered = menu.render(plain());
+        let lines: Vec<&str> = rendered.lines().collect();
+        assert_eq!(lines[0], "web-casoon  pnpm");
+        assert_eq!(lines[1].trim(), "27 scripts · 7 groups");
+        assert_eq!(lines[2], "", "the blank line stays under the block");
+    }
+
+    #[test]
+    fn chrome_height_counts_the_summary_and_the_tab_row() {
+        let menu = tabbed(3).with_summary("6 scripts · 3 groups");
+        // Heading, summary, blank, tab row, rule, blank, footer.
+        assert_eq!(menu.chrome_height(on_tab(0), None), 7);
+        assert_eq!(
+            menu.chrome_height(searching("a"), None),
+            5,
+            "the tab row goes away while searching"
+        );
+    }
+
+    #[test]
+    fn a_tabbed_window_never_draws_more_body_lines_than_it_was_given() {
+        // The frame must not outgrow the terminal, or the redraw moves the
+        // cursor further up than there are lines.
+        let menu = tabbed(9).with_summary("18 scripts · 9 groups");
+        let chrome = menu.chrome_height(on_tab(4), None);
+        for height in [3, 5, 10, 25] {
+            let shown = crate::internal::collect_to_string(|buf| {
+                menu.write_frame(
+                    buf,
+                    plain(),
+                    Some(0),
+                    Some(Viewport::new(0, height)),
+                    on_tab(4),
+                )
+            });
+            let body = shown.lines().count() - chrome;
+            assert!(body <= height, "height {height}: drew {body} body lines");
+        }
+    }
+
+    #[test]
+    fn a_footer_too_wide_breaks_rather_than_wrapping() {
+        // The bug this pins: a footer wider than the terminal wrapped, so the
+        // frame occupied more rows than it reported, and the redraw — which
+        // moves the cursor up by that count — left a stale line behind on
+        // every keypress. Adding the group keys made it reachable at 60
+        // columns with four hints.
+        let menu = tabbed(3)
+            .add_hint(Hint::new('H', "Health"))
+            .add_hint(Hint::new('C', "Clean"))
+            .add_hint(Hint::new('S', "Security"))
+            .add_hint(Hint::new('U', "Updates"));
+
+        for columns in [30, 40, 60, 80, 120] {
+            let shown = crate::internal::collect_to_string(|buf| {
+                menu.write_frame(
+                    buf,
+                    plain(),
+                    Some(0),
+                    Some(Viewport::new(0, 999).with_width(Some(columns))),
+                    on_tab(0),
+                )
+            });
+            for line in shown.lines() {
+                assert!(
+                    line.width() <= columns,
+                    "width {columns}: line of {} columns: {line:?}",
+                    line.width()
+                );
+            }
+            for key in ["←→ group", "H Health", "C Clean", "S Security", "U Updates"] {
+                assert!(shown.contains(key), "width {columns} dropped {key}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_frame_is_exactly_as_tall_as_it_says() {
+        // The redraw moves the cursor up by the height the frame reports. Any
+        // disagreement between that and what is written shows up as a stale
+        // line or an eaten one.
+        let menu = tabbed(3)
+            .with_summary("6 entries · 3 groups")
+            .add_hint(Hint::new('H', "Health"))
+            .add_hint(Hint::new('C', "Clean"))
+            .add_hint(Hint::new('S', "Security"))
+            .add_hint(Hint::new('U', "Updates"));
+
+        for columns in [30, 60, 120] {
+            for view in [on_tab(0), on_tab(2), searching("a"), searching("")] {
+                let shown = crate::internal::collect_to_string(|buf| {
+                    menu.write_frame(
+                        buf,
+                        plain(),
+                        Some(0),
+                        Some(Viewport::new(0, 999).with_width(Some(columns))),
+                        view,
+                    )
+                });
+                let body = menu.body_height(view).min(999);
+                assert_eq!(
+                    shown.lines().count(),
+                    menu.chrome_height(view, Some(columns)) + body,
+                    "width {columns}, view {view:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_long_query_cannot_wrap_the_frame() {
+        let menu = tabbed(3);
+        let query = "a".repeat(200);
+        let shown = crate::internal::collect_to_string(|buf| {
+            menu.write_frame(
+                buf,
+                plain(),
+                Some(0),
+                Some(Viewport::new(0, 999).with_width(Some(40))),
+                searching(&query),
+            )
+        });
+        for line in shown.lines() {
+            assert!(line.width() <= 40, "line of {} columns", line.width());
+        }
+    }
+
+    #[test]
+    fn a_tabbed_frame_advertises_the_group_keys() {
+        // A key the menu answers to but never mentions is a key nobody presses.
+        assert!(framed(&tabbed(3), on_tab(0)).contains("←→ group"));
+        assert!(
+            !framed(&tabbed(3), flat()).contains("←→ group"),
+            "and not where they do nothing"
+        );
     }
 
     #[test]
@@ -1075,7 +1688,7 @@ mod tests {
     fn the_query_line_is_drawn_while_searching() {
         let menu = script_menu();
         let shown = crate::internal::collect_to_string(|buf| {
-            menu.write_frame(buf, plain(), Some(0), None, Some("dep"))
+            menu.write_frame(buf, plain(), Some(0), None, searching("dep"))
         });
         assert!(shown.contains("/ dep"));
     }
@@ -1084,7 +1697,7 @@ mod tests {
     fn an_opened_search_prompts_before_anything_is_typed() {
         let menu = script_menu();
         let shown = crate::internal::collect_to_string(|buf| {
-            menu.write_frame(buf, plain(), Some(0), None, Some(""))
+            menu.write_frame(buf, plain(), Some(0), None, searching(""))
         });
         assert!(shown.contains("type to filter"));
     }
