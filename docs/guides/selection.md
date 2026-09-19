@@ -79,18 +79,24 @@ rest of the crate: the application owns the decision about its own streams.
 
 A hint key wins over the built-in `q`, so a menu is free to bind `q` itself.
 
-## Terminals shorter than the menu
+## Terminals smaller than the menu
+
+Entries are **shortened to fit the width**, with `…` marking the cut, rather than wrapped. A
+wrapped line would change how many lines the frame occupies, which the redraw counts on, and a
+description spilling to column zero is what makes a long list unreadable in the first place.
+Where the label column leaves too little room for a description to say anything, the
+description is left out instead of cut to a stub.
 
 A menu taller than the terminal is windowed: the body scrolls, and `↑ N more` / `↓ N more`
 mark what is out of view. The window moves the least amount that keeps the cursor visible, so
 short cursor moves do not slide the whole screen.
 
-The height comes from the terminal itself, re-read on every frame, so resizing the window
+The size comes from the terminal itself, re-read on every frame, so resizing the window
 while the menu is open is picked up without a `SIGWINCH` handler. A terminal that reports no
 height gets the whole menu.
 
-`Menu::render` is never windowed. A pipe or a file has no height to run out of, and
-truncating there would drop entries for no reason.
+`Menu::render` is neither windowed nor shortened. A pipe or a file has no height or width to
+run out of, and cutting there would lose information for no reason.
 
 ## Without a terminal
 
