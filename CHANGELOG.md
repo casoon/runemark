@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-19
+
+### Fixed
+
+- An interactive menu now shows `/ search` in its footer. `/` is reserved for
+  the filter and cannot be bound as a hint, so nothing else could advertise it —
+  a key the menu answers to but never mentions is a key nobody presses.
+  `Menu::render` still offers no keys: printed to a pipe there is no keyboard.
+
 ## [0.5.0] - 2026-09-19
 
 ### Added

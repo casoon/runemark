@@ -83,6 +83,9 @@ for the filter and cannot be bound.
 
 ## Filtering
 
+An interactive menu shows `/ search` in its footer, before any hints the application adds;
+`Menu::render` shows no keys at all, since a pipe has no keyboard.
+
 `/` starts a filter; typing narrows the menu, `Backspace` widens it again. Groups with nothing
 left disappear, and the cursor sits on the best match.
 
