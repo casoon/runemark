@@ -79,17 +79,16 @@ impl Menu {
     }
 
     fn event_loop(&self, console: Console, terminal: &RawTerminal) -> io::Result<Outcome> {
-        let mut index = 0usize;
-        let last = self.len() - 1;
+        let mut state = State::default();
         let mut view = Scroll::default();
 
         loop {
-            self.draw(console, terminal, index, &mut view)?;
+            self.draw(console, terminal, &state, &mut view)?;
 
-            match self.act_on(terminal.read_key()?, index, last) {
-                Action::Move(next) => index = next,
+            match self.act_on(terminal.read_key()?, &state) {
+                Action::Update(next) => state = next,
                 Action::Finish(outcome) => {
-                    self.draw(console, terminal, index, &mut view)?;
+                    self.draw(console, terminal, &state, &mut view)?;
                     return Ok(outcome);
                 }
                 Action::Ignore => {}
@@ -97,32 +96,73 @@ impl Menu {
         }
     }
 
-    fn act_on(&self, key: Key, index: usize, last: usize) -> Action {
+    fn act_on(&self, key: Key, state: &State) -> Action {
+        let matches = self.matching_items(state.query.as_deref());
+        // An empty result set still draws; it just has nothing to act on.
+        let last = matches.len().saturating_sub(1);
+
         match key {
             // Wrapping beats stopping at the ends: the list is short and a dead
             // key at the bottom is the more annoying failure.
-            Key::Up => Action::Move(if index == 0 { last } else { index - 1 }),
-            Key::Down => Action::Move(if index == last { 0 } else { index + 1 }),
-            Key::Enter => self.items().nth(index).map_or(Action::Ignore, |item| {
+            Key::Up => Action::Update(state.at(if state.index == 0 {
+                last
+            } else {
+                state.index - 1
+            })),
+            Key::Down => Action::Update(state.at(if state.index >= last {
+                0
+            } else {
+                state.index + 1
+            })),
+            Key::Enter => matches.get(state.index).map_or(Action::Ignore, |item| {
                 Action::Finish(Outcome::Selected(item.id.clone()))
             }),
-            Key::Escape | Key::Interrupt => Action::Finish(Outcome::Cancelled),
-            Key::Char(pressed) => {
-                // Hint keys win over the built-in 'q', so a menu may bind 'q'.
-                if let Some(hint) = self
-                    .hints
-                    .iter()
-                    .find(|hint| hint.key.eq_ignore_ascii_case(&pressed))
-                {
-                    Action::Finish(Outcome::Hotkey(hint.key))
-                } else if pressed == 'q' {
-                    Action::Finish(Outcome::Cancelled)
-                } else {
-                    Action::Ignore
+            // Escape leaves the search before it leaves the menu, so a mistyped
+            // query costs one key rather than the whole selection.
+            Key::Escape => match state.query {
+                Some(_) => Action::Update(State::default()),
+                None => Action::Finish(Outcome::Cancelled),
+            },
+            Key::Interrupt => Action::Finish(Outcome::Cancelled),
+            Key::Backspace => match &state.query {
+                Some(query) if !query.is_empty() => {
+                    let mut query = query.clone();
+                    query.pop();
+                    Action::Update(state.searching(query))
                 }
-            }
+                // Backspacing out of an empty query leaves the search.
+                Some(_) => Action::Update(State::default()),
+                None => Action::Ignore,
+            },
+            Key::Char(pressed) => self.act_on_char(pressed, state),
             Key::Other => Action::Ignore,
         }
+    }
+
+    fn act_on_char(&self, pressed: char, state: &State) -> Action {
+        // Inside a search every printable key is part of the query, so a
+        // script named "quality" can be typed without 'q' cancelling.
+        if let Some(query) = &state.query {
+            let mut query = query.clone();
+            query.push(pressed.to_ascii_lowercase());
+            return Action::Update(state.searching(query));
+        }
+
+        if pressed == '/' {
+            return Action::Update(state.searching(String::new()));
+        }
+        // Hint keys win over the built-in 'q', so a menu may bind 'q'.
+        if let Some(hint) = self
+            .hints
+            .iter()
+            .find(|hint| hint.key.eq_ignore_ascii_case(&pressed))
+        {
+            return Action::Finish(Outcome::Hotkey(hint.key));
+        }
+        if pressed == 'q' {
+            return Action::Finish(Outcome::Cancelled);
+        }
+        Action::Ignore
     }
 
     /// Draws the menu in place, overwriting the previous frame.
@@ -130,15 +170,16 @@ impl Menu {
         &self,
         console: Console,
         terminal: &RawTerminal,
-        index: usize,
+        state: &State,
         view: &mut Scroll,
     ) -> io::Result<()> {
-        let viewport = view.advance(self, terminal, index);
+        let query = state.query.as_deref();
+        let viewport = view.advance(self, terminal, state);
 
         // Raw mode drops the implicit carriage return on newline, so the frame
         // is rendered normally and then given explicit ones.
         let frame = crate::internal::collect_to_string(|buf| {
-            self.write_frame(buf, console, Some(index), viewport)
+            self.write_frame(buf, console, Some(state.index), viewport, query)
         });
         let lines: Vec<&str> = frame.lines().collect();
 
@@ -177,21 +218,22 @@ impl Scroll {
     /// Only moving when the cursor would leave the window keeps the list still
     /// under the cursor; recentring on every keypress makes short moves feel
     /// like the whole screen is sliding.
-    fn advance(&mut self, menu: &Menu, terminal: &RawTerminal, index: usize) -> Option<Viewport> {
+    fn advance(&mut self, menu: &Menu, terminal: &RawTerminal, state: &State) -> Option<Viewport> {
         // A terminal that reports no size gets the whole menu, as before.
         let (height, columns) = terminal.size()?;
         let columns = (columns > 0).then_some(columns);
-        let rows = menu.body_height();
+        let query = state.query.as_deref();
+        let rows = menu.body_height(query);
         // One line stays free so the frame does not push its own top off screen.
-        let body = height.saturating_sub(menu.chrome_height() + 1);
+        let body = height.saturating_sub(menu.chrome_height(state.query.is_some()) + 1);
 
-        if body == 0 || rows <= body {
+        if body == 0 || rows == 0 || rows <= body {
             self.start = 0;
             // Still bound the width: a short list can carry long descriptions.
             return Some(Viewport::new(0, rows.max(1)).with_width(columns));
         }
 
-        let cursor = menu.row_of_item(index);
+        let cursor = menu.row_of_item(state.index, query);
         let mut start = self.start.min(rows - 1);
 
         if cursor < start {
@@ -210,8 +252,34 @@ impl Scroll {
     }
 }
 
+/// Where the cursor is, and what is being searched for.
+#[derive(Debug, Default, Clone)]
+struct State {
+    index: usize,
+    /// `None` outside search mode; `Some("")` once `/` has been pressed.
+    query: Option<String>,
+}
+
+impl State {
+    fn at(&self, index: usize) -> Self {
+        Self {
+            index,
+            query: self.query.clone(),
+        }
+    }
+
+    /// Changing the query resets the cursor: the best match is now first, and
+    /// leaving the cursor where it was would land it on something unrelated.
+    fn searching(&self, query: String) -> Self {
+        Self {
+            index: 0,
+            query: Some(query),
+        }
+    }
+}
+
 enum Action {
-    Move(usize),
+    Update(State),
     Finish(Outcome),
     Ignore,
 }

@@ -1,6 +1,6 @@
 {
   "name": "@casoon/runemark",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Native Node.js terminal presentation powered by Runemark",
   "license": "MIT",
   "main": "index.cjs",

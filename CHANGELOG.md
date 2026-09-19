@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-19
+
+### Added
+
+- `/` filters a menu as you type. Groups with nothing left disappear, the
+  cursor sits on the best match, and `Backspace` widens the query again.
+  Matching is tiered: the query as a substring of the name, then as a
+  subsequence of it (`dpl` finds `deploy`), then as a substring of the
+  description — a name the user is typing towards beats a description that
+  happens to share letters.
+- `Esc` leaves the filter before it leaves the menu, so a mistyped query costs
+  one key rather than the whole selection. While filtering, every printable key
+  is part of the query, so a menu binding `q` as a hint can still be searched
+  for `quality`.
+- `/` is reserved and can no longer be bound as a hint key.
+
+An empty query restores the menu as it was rather than ranking everything equal
+and sorting it alphabetically, which would undo the ordering the grouping
+exists to provide.
+
 ## [0.4.2] - 2026-09-19
 
 ### Fixed
