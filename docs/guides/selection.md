@@ -73,11 +73,32 @@ rest of the crate: the application owns the decision about its own streams.
 | --- | --- |
 | `↑` `↓` | Move the cursor, wrapping at both ends |
 | `Enter` | Select, returning `Outcome::Selected` |
+| `/` | Start filtering |
 | A hint key | Returns `Outcome::Hotkey`, matched case-insensitively |
 | `Esc`, `q` | `Outcome::Cancelled` |
 | `Ctrl-C` | `Outcome::Cancelled` |
 
-A hint key wins over the built-in `q`, so a menu is free to bind `q` itself.
+A hint key wins over the built-in `q`, so a menu is free to bind `q` itself. `/` is reserved
+for the filter and cannot be bound.
+
+## Filtering
+
+`/` starts a filter; typing narrows the menu, `Backspace` widens it again. Groups with nothing
+left disappear, and the cursor sits on the best match.
+
+`Esc` leaves the filter before it leaves the menu, so a mistyped query costs one key rather
+than the whole selection. A second `Esc` cancels. While filtering, every printable key is part
+of the query — a menu that binds `q` as a hint still lets you type `quality`.
+
+Matching is case-insensitive and ranked in tiers:
+
+1. the query as a substring of the **name**, earlier position first
+2. the query as a **subsequence** of the name, tightest span first — `dpl` finds `deploy`
+3. the query as a substring of the **description**
+
+A name the user is typing towards beats a description that happens to contain the same
+letters. An empty query is not a search result: it restores the menu as it was, rather than
+ranking everything equal and sorting it alphabetically.
 
 ## Terminals smaller than the menu
 

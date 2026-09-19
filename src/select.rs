@@ -160,6 +160,60 @@ fn shorten(text: &str, max: usize) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(out)
 }
 
+/// How well an item answers a search, lower being better.
+///
+/// The tiers matter more than the numbers: a name the user is typing beats a
+/// description that happens to contain the same letters, and a run of adjacent
+/// characters beats the same letters scattered through the name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Score(u32);
+
+impl Score {
+    const LABEL_SUBSTRING: u32 = 0;
+    const LABEL_SUBSEQUENCE: u32 = 1_000;
+    const DESCRIPTION: u32 = 10_000;
+}
+
+/// Scores `item` against a lowercased, non-empty `query`, or `None` if it does
+/// not match.
+fn score(item: &Item, query: &str) -> Option<Score> {
+    let label = item.label.to_lowercase();
+    if let Some(at) = label.find(query) {
+        return Some(Score(
+            Score::LABEL_SUBSTRING + u32::try_from(at).unwrap_or(u32::MAX),
+        ));
+    }
+    // Typing "bl" for "build:landings" should still find it.
+    if let Some(span) = subsequence_span(&label, query) {
+        return Some(Score(
+            Score::LABEL_SUBSEQUENCE + u32::try_from(span).unwrap_or(u32::MAX),
+        ));
+    }
+    let description = item.description.as_ref()?.to_lowercase();
+    let at = description.find(query)?;
+    Some(Score(
+        Score::DESCRIPTION + u32::try_from(at).unwrap_or(u32::MAX),
+    ))
+}
+
+/// The span `query` occupies in `text` as a subsequence, if it occurs at all.
+///
+/// The span is what separates a tight match from a lucky one: `dl` spans two
+/// characters in `dl-report` and fourteen in `deploy:landings`.
+fn subsequence_span(text: &str, query: &str) -> Option<usize> {
+    let mut chars = text.char_indices();
+    let mut first = None;
+    let mut last = 0;
+
+    for wanted in query.chars() {
+        let (at, _) = chars.find(|(_, character)| *character == wanted)?;
+        first.get_or_insert(at);
+        last = at;
+    }
+
+    Some(last - first.unwrap_or(last) + 1)
+}
+
 /// One drawn line of the menu body.
 enum Row<'a> {
     Group(&'a str),
@@ -288,21 +342,66 @@ impl Menu {
     ///
     /// This is what a non-interactive caller shows, and what tests assert on.
     pub fn render(&self, console: Console) -> String {
-        crate::internal::collect_to_string(|buf| self.write_frame(buf, console, None, None))
+        crate::internal::collect_to_string(|buf| self.write_frame(buf, console, None, None, None))
     }
 
     /// The body as a flat list of lines, so a viewport can window over it.
-    fn body_rows(&self) -> Vec<Row<'_>> {
-        let mut rows = Vec::with_capacity(self.groups.len() + self.len());
-        let mut index = 0;
-        for group in &self.groups {
-            rows.push(Row::Group(&group.label));
-            for item in &group.items {
-                rows.push(Row::Item(item, index));
-                index += 1;
+    ///
+    /// With a `query`, only matching items appear, best first, and a group with
+    /// nothing left disappears with them. Item indices are positions in that
+    /// filtered order, which is what the cursor counts.
+    fn body_rows(&self, query: Option<&str>) -> Vec<Row<'_>> {
+        // An empty query is not a search result: ranking it would sort the menu
+        // alphabetically, which is the arrangement the grouping exists to avoid.
+        let query = query.filter(|query| !query.is_empty());
+
+        let Some(query) = query else {
+            let mut rows = Vec::with_capacity(self.groups.len() + self.len());
+            let mut index = 0;
+            for group in &self.groups {
+                rows.push(Row::Group(&group.label));
+                for item in &group.items {
+                    rows.push(Row::Item(item, index));
+                    index += 1;
+                }
             }
+            return rows;
+        };
+
+        // Ranking across the whole menu, not within each group: the best answer
+        // to what was typed should be the first thing the cursor sits on.
+        let mut ranked: Vec<(Score, &str, &Item)> =
+            self.groups
+                .iter()
+                .flat_map(|group| {
+                    group.items.iter().filter_map(move |item| {
+                        Some((score(item, query)?, group.label.as_str(), item))
+                    })
+                })
+                .collect();
+        ranked.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.2.label.cmp(&b.2.label)));
+
+        let mut rows = Vec::with_capacity(ranked.len() + 1);
+        let mut last_group = None;
+        for (index, (_, group, item)) in ranked.iter().enumerate() {
+            if last_group != Some(*group) {
+                rows.push(Row::Group(group));
+                last_group = Some(*group);
+            }
+            rows.push(Row::Item(item, index));
         }
         rows
+    }
+
+    /// The items a `query` matches, in the order they are drawn.
+    fn matching_items(&self, query: Option<&str>) -> Vec<&Item> {
+        self.body_rows(query)
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Item(item, _) => Some(item),
+                Row::Group(_) => None,
+            })
+            .collect()
     }
 
     /// Writes the menu, marking `cursor` when one is given.
@@ -316,6 +415,7 @@ impl Menu {
         console: Console,
         cursor: Option<usize>,
         viewport: Option<Viewport>,
+        query: Option<&str>,
     ) -> std::io::Result<()> {
         let columns = viewport.and_then(|viewport| viewport.width);
 
@@ -339,7 +439,7 @@ impl Menu {
             // description and pushes it off screen entirely.
             columns.map_or(usize::MAX, |columns| columns.saturating_sub(MARKER_WIDTH)),
         );
-        let rows = self.body_rows();
+        let rows = self.body_rows(query);
         let window = viewport.map_or(0..rows.len(), |viewport| viewport.window(rows.len()));
 
         if window.start > 0 {
@@ -383,13 +483,28 @@ impl Menu {
             writeln!(writer)?;
         }
 
+        if rows.is_empty() && query.is_some() {
+            console.write_paint(Tone::Muted, "  no matches", writer)?;
+            writeln!(writer)?;
+        }
+
         let remaining = rows.len() - window.end;
         if remaining > 0 {
             console.write_paint(Tone::Muted, format!("  ↓ {remaining} more"), writer)?;
             writeln!(writer)?;
         }
 
-        if !self.hints.is_empty() {
+        if let Some(query) = query {
+            writeln!(writer)?;
+            console.write_paint(Tone::Success, "/", writer)?;
+            write!(writer, " ")?;
+            if query.is_empty() {
+                console.write_paint(Tone::Muted, "type to filter", writer)?;
+            } else {
+                console.write_paint(Tone::Title, query, writer)?;
+            }
+            writeln!(writer)?;
+        } else if !self.hints.is_empty() {
             writeln!(writer)?;
             for (position, hint) in self.hints.iter().enumerate() {
                 if position > 0 {
@@ -407,8 +522,8 @@ impl Menu {
 
     /// The body row showing item `index`, for keeping the cursor in view.
     #[cfg(any(all(feature = "select", unix), test))]
-    fn row_of_item(&self, index: usize) -> usize {
-        self.body_rows()
+    fn row_of_item(&self, index: usize, query: Option<&str>) -> usize {
+        self.body_rows(query)
             .iter()
             .position(|row| matches!(row, Row::Item(_, item) if *item == index))
             .unwrap_or(0)
@@ -416,16 +531,24 @@ impl Menu {
 
     /// Body rows in total, for sizing a viewport.
     #[cfg(any(all(feature = "select", unix), test))]
-    fn body_height(&self) -> usize {
-        self.groups.len() + self.len()
+    fn body_height(&self, query: Option<&str>) -> usize {
+        // The "no matches" line occupies the body when nothing is left.
+        self.body_rows(query)
+            .len()
+            .max(usize::from(query.is_some()))
     }
 
     /// Lines the menu spends on anything but the body.
     #[cfg(any(all(feature = "select", unix), test))]
-    fn chrome_height(&self) -> usize {
+    fn chrome_height(&self, searching: bool) -> usize {
         let heading = if self.heading.is_some() { 2 } else { 0 };
-        let hints = if self.hints.is_empty() { 0 } else { 2 };
-        heading + hints
+        // While searching, the query line replaces the hint line.
+        let footer = if searching || !self.hints.is_empty() {
+            2
+        } else {
+            0
+        };
+        heading + footer
     }
 }
 
@@ -534,7 +657,13 @@ mod tests {
 
     fn windowed(menu: &Menu, start: usize, height: usize) -> String {
         crate::internal::collect_to_string(|buf| {
-            menu.write_frame(buf, plain(), Some(0), Some(Viewport::new(start, height)))
+            menu.write_frame(
+                buf,
+                plain(),
+                Some(0),
+                Some(Viewport::new(start, height)),
+                None,
+            )
         })
     }
 
@@ -545,6 +674,7 @@ mod tests {
                 plain(),
                 Some(0),
                 Some(Viewport::new(0, 999).with_width(Some(columns))),
+                None,
             )
         })
     }
@@ -625,19 +755,24 @@ mod tests {
     fn row_lookup_accounts_for_group_labels() {
         let menu = menu();
         // Rows: Development, dev, dev:landings, Build, build
-        assert_eq!(menu.row_of_item(0), 1);
-        assert_eq!(menu.row_of_item(2), 4);
-        assert_eq!(menu.body_height(), 5);
+        assert_eq!(menu.row_of_item(0, None), 1);
+        assert_eq!(menu.row_of_item(2, None), 4);
+        assert_eq!(menu.body_height(None), 5);
     }
 
     #[test]
     fn chrome_height_counts_heading_and_hints() {
-        assert_eq!(menu().chrome_height(), 4);
-        assert_eq!(Menu::new().chrome_height(), 0);
+        assert_eq!(menu().chrome_height(false), 4);
+        assert_eq!(Menu::new().chrome_height(false), 0);
         assert_eq!(
-            Menu::new().with_heading("h").chrome_height(),
+            Menu::new().with_heading("h").chrome_height(false),
             2,
             "heading plus its blank line"
+        );
+        assert_eq!(
+            Menu::new().chrome_height(true),
+            2,
+            "the query line needs room even without hints"
         );
     }
 
@@ -647,12 +782,12 @@ mod tests {
         // row below the window, because the scroll maths and the window maths
         // disagreed about how many lines the indicators cost.
         let menu = long_menu(40);
-        let rows = menu.body_height();
+        let rows = menu.body_height(None);
 
         for height in [4, 6, 11, 21, 30] {
             let mut start = 0usize;
             for index in 0..menu.len() {
-                let cursor = menu.row_of_item(index);
+                let cursor = menu.row_of_item(index, None);
                 if cursor < start {
                     start = cursor;
                 }
@@ -720,6 +855,147 @@ mod tests {
         assert_eq!(shorten("äöüß", 3).width(), 3);
         assert!(shorten("äöüß", 3).ends_with('…'));
         assert_eq!(shorten("abc", 1), "");
+    }
+
+    fn searched(menu: &Menu, query: &str) -> Vec<String> {
+        menu.matching_items(Some(query))
+            .into_iter()
+            .map(|item| item.label.clone())
+            .collect()
+    }
+
+    fn script_menu() -> Menu {
+        Menu::new()
+            .add_group(
+                Group::new("Development")
+                    .add_item(Item::new("dev", "dev").with_description("Start the site"))
+                    .add_item(Item::new("dev:landings", "dev:landings")),
+            )
+            .add_group(
+                Group::new("Deploy")
+                    .add_item(Item::new("deploy", "deploy").with_description("Ship everything"))
+                    .add_item(Item::new("deploy:landings", "deploy:landings")),
+            )
+            .add_group(
+                Group::new("Quality")
+                    .add_item(Item::new("check", "check").with_description("Lint and format")),
+            )
+    }
+
+    #[test]
+    fn an_empty_query_keeps_the_menu_as_it_was() {
+        // Backspacing a query away must restore the meaning-first order, not
+        // leave the menu sorted alphabetically by a rank everything ties on.
+        let menu = script_menu();
+        let unsearched: Vec<String> = menu.items().map(|item| item.label.clone()).collect();
+        assert_eq!(searched(&menu, ""), unsearched);
+    }
+
+    #[test]
+    fn a_substring_in_the_name_wins_over_one_in_a_description() {
+        // "s" appears in "Start the site" and in "deploy:landings"; the name
+        // is what the user is typing towards.
+        let hits = searched(&script_menu(), "landings");
+        assert_eq!(hits, ["dev:landings", "deploy:landings"]);
+    }
+
+    #[test]
+    fn scattered_letters_still_find_a_name() {
+        assert!(searched(&script_menu(), "dpl").contains(&"deploy".to_owned()));
+    }
+
+    #[test]
+    fn a_tight_match_ranks_before_a_scattered_one() {
+        let hits = searched(&script_menu(), "dep");
+        assert_eq!(hits.first().map(String::as_str), Some("deploy"));
+    }
+
+    #[test]
+    fn a_description_match_is_found_when_no_name_matches() {
+        let hits = searched(&script_menu(), "lint");
+        assert_eq!(hits, ["check"]);
+    }
+
+    #[test]
+    fn a_query_that_matches_nothing_yields_nothing() {
+        assert!(searched(&script_menu(), "qqqq").is_empty());
+    }
+
+    #[test]
+    fn a_query_that_matches_nothing_says_so() {
+        // An empty area under a query reads as a broken menu rather than an
+        // answer.
+        let menu = script_menu();
+        let shown = crate::internal::collect_to_string(|buf| {
+            menu.write_frame(buf, plain(), Some(0), None, Some("qqqq"))
+        });
+        assert!(shown.contains("no matches"));
+        assert_eq!(menu.body_height(Some("qqqq")), 1, "the notice needs a line");
+    }
+
+    #[test]
+    fn searching_is_case_insensitive() {
+        assert_eq!(
+            searched(&script_menu(), "dev"),
+            searched(&script_menu(), "dev")
+        );
+        assert!(
+            !searched(&script_menu(), "start").is_empty(),
+            "matches a capitalised description"
+        );
+    }
+
+    #[test]
+    fn a_group_with_no_matches_is_not_drawn() {
+        let menu = script_menu();
+        let rows = menu.body_rows(Some("check"));
+        let groups: Vec<&str> = rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::Group(label) => Some(*label),
+                Row::Item(..) => None,
+            })
+            .collect();
+        assert_eq!(groups, ["Quality"]);
+    }
+
+    #[test]
+    fn filtered_item_indices_are_positions_in_the_result() {
+        let menu = script_menu();
+        let rows = menu.body_rows(Some("landings"));
+        let indices: Vec<usize> = rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::Item(_, index) => Some(*index),
+                Row::Group(_) => None,
+            })
+            .collect();
+        assert_eq!(indices, [0, 1], "the cursor counts matches, not all items");
+    }
+
+    #[test]
+    fn a_subsequence_span_measures_tightness() {
+        assert_eq!(subsequence_span("deploy", "dep"), Some(3));
+        assert_eq!(subsequence_span("deploy", "dy"), Some(6));
+        assert_eq!(subsequence_span("deploy", "dz"), None);
+    }
+
+    #[test]
+    fn the_query_line_is_drawn_while_searching() {
+        let menu = script_menu();
+        let shown = crate::internal::collect_to_string(|buf| {
+            menu.write_frame(buf, plain(), Some(0), None, Some("dep"))
+        });
+        assert!(shown.contains("/ dep"));
+    }
+
+    #[test]
+    fn an_opened_search_prompts_before_anything_is_typed() {
+        let menu = script_menu();
+        let shown = crate::internal::collect_to_string(|buf| {
+            menu.write_frame(buf, plain(), Some(0), None, Some(""))
+        });
+        assert!(shown.contains("type to filter"));
     }
 
     #[test]

@@ -31,6 +31,7 @@ pub enum Key {
     Enter,
     Escape,
     Interrupt,
+    Backspace,
     Char(char),
     /// A recognised but unused key, or an escape sequence we skip.
     Other,
@@ -174,8 +175,10 @@ impl RawTerminal {
             0x03 => Ok(Key::Interrupt),
             b'\r' | b'\n' => Ok(Key::Enter),
             0x1b => self.read_escape(),
+            // Terminals send either for Backspace depending on their settings.
+            0x08 | 0x7f => Ok(Key::Backspace),
             // C0 controls other than the ones above carry no meaning here.
-            0x00..=0x1f | 0x7f => Ok(Key::Other),
+            0x00..=0x1f => Ok(Key::Other),
             _ => self.read_utf8(byte),
         }
     }

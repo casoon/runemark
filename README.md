@@ -28,8 +28,8 @@ Runemark is the shared presentation layer for those concerns:
 - Report models for verdicts, summary metrics, finding groups, and next steps.
 - Actionable error blocks, file-change previews, and clickable locations for
   compatible terminals.
-- Grouped, keyboard-driven selection for tools that need a menu rather than a
-  prompt (Unix).
+- Grouped, keyboard-driven selection with filtering, for tools that need a menu
+  rather than a prompt (Unix).
 - Small core dependency footprint; `indicatif` and `libc` are optional, behind
   the `progress` and `select` features.
 
@@ -152,6 +152,9 @@ if outcome == Outcome::Unavailable {
 }
 # Ok::<(), std::io::Error>(())
 ```
+
+`/` filters the menu as you type, ranking names above descriptions and tight
+matches above scattered ones.
 
 `Menu::render` needs no feature — it is plain formatting, and it is what a
 non-interactive caller shows. A menu larger than the terminal is fitted to it:
