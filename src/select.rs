@@ -125,6 +125,9 @@ pub enum Outcome {
     Unavailable,
 }
 
+/// Above this many entries, the filter is worth a line in the footer.
+const SEARCH_WORTH_MENTIONING: usize = 5;
+
 /// Columns the cursor marker and its trailing space occupy.
 const MARKER_WIDTH: usize = 2;
 /// Columns between the label column and the description.
@@ -535,8 +538,13 @@ impl Menu {
     ///
     /// A cursor means the menu is being driven from a keyboard; `render` passes
     /// none, and offering a key to a pipe would be a lie.
+    ///
+    /// Short menus do not advertise it. Filtering still works — the key is
+    /// never taken away — but a yes/no question that offers to search itself
+    /// reads as clutter, and below a handful of entries every one of them is
+    /// already on screen.
     fn offers_search(&self, cursor: Option<usize>) -> bool {
-        cursor.is_some() && !self.is_empty()
+        cursor.is_some() && self.len() > SEARCH_WORTH_MENTIONING
     }
 
     /// The body row showing item `index`, for keeping the cursor in view.
@@ -636,7 +644,7 @@ mod tests {
     fn a_keyboard_frame_advertises_the_filter() {
         // `/` cannot be bound as a hint, so if the menu does not mention it,
         // nothing will.
-        let menu = menu();
+        let menu = long_menu(20).add_hint(Hint::new('U', "Updates"));
         let interactive = crate::internal::collect_to_string(|buf| {
             menu.write_frame(buf, plain(), Some(0), None, None)
         });
@@ -660,6 +668,40 @@ mod tests {
             empty.write_frame(buf, plain(), Some(0), None, None)
         });
         assert!(!shown.contains("search"));
+    }
+
+    #[test]
+    fn a_short_menu_does_not_offer_to_search_itself() {
+        // A yes/no question advertising a filter reads as clutter.
+        let confirm = Menu::new().with_heading("Run deploy?").add_group(
+            Group::new("Confirm")
+                .add_item(Item::new("no", "Cancel"))
+                .add_item(Item::new("yes", "Run deploy")),
+        );
+        let shown = crate::internal::collect_to_string(|buf| {
+            confirm.write_frame(buf, plain(), Some(0), None, None)
+        });
+        assert!(!shown.contains("search"));
+    }
+
+    #[test]
+    fn filtering_a_short_menu_still_works() {
+        // Not advertising the key is not the same as removing it.
+        let short = long_menu(3);
+        assert_eq!(searched(&short, "t2"), ["t2"]);
+        let shown = crate::internal::collect_to_string(|buf| {
+            short.write_frame(buf, plain(), Some(0), None, Some("t2"))
+        });
+        assert!(shown.contains("/ t2"));
+    }
+
+    #[test]
+    fn a_long_menu_still_advertises_it() {
+        let long = long_menu(20);
+        let shown = crate::internal::collect_to_string(|buf| {
+            long.write_frame(buf, plain(), Some(0), None, None)
+        });
+        assert!(shown.contains("/ search"));
     }
 
     #[test]
