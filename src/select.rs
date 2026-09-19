@@ -125,6 +125,41 @@ pub enum Outcome {
     Unavailable,
 }
 
+/// Columns the cursor marker and its trailing space occupy.
+const MARKER_WIDTH: usize = 2;
+/// Columns between the label column and the description.
+const GAP_WIDTH: usize = 2;
+/// Below this, a description says nothing and is left out instead.
+const MIN_DESCRIPTION: usize = 12;
+
+/// Shortens `text` to `max` columns, marking the cut with an ellipsis.
+///
+/// Entries are shortened rather than wrapped. A wrapped line would change the
+/// number of lines the frame occupies, which the redraw counts on, and a
+/// description spilling to column zero is what makes a long list unreadable in
+/// the first place.
+fn shorten(text: &str, max: usize) -> std::borrow::Cow<'_, str> {
+    if text.width() <= max {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    if max <= 1 {
+        return std::borrow::Cow::Borrowed("");
+    }
+
+    let mut out = String::new();
+    let mut used = 0;
+    for character in text.chars() {
+        let next = character.to_string().width();
+        if used + next > max - 1 {
+            break;
+        }
+        out.push(character);
+        used += next;
+    }
+    out.push('…');
+    std::borrow::Cow::Owned(out)
+}
+
 /// One drawn line of the menu body.
 enum Row<'a> {
     Group(&'a str),
@@ -132,18 +167,30 @@ enum Row<'a> {
     Item(&'a Item, usize),
 }
 
-/// A window over the body, for a terminal too short to show every entry.
+/// The visible area, for a terminal that cannot show the whole menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Viewport {
     /// First body row to draw.
     start: usize,
     /// Body rows available, before any scroll indicator is subtracted.
     height: usize,
+    /// Columns available. Entries are shortened to fit rather than wrapped:
+    /// a wrapped line would change the frame height and break the redraw.
+    width: Option<usize>,
 }
 
 impl Viewport {
     pub(crate) const fn new(start: usize, height: usize) -> Self {
-        Self { start, height }
+        Self {
+            start,
+            height,
+            width: None,
+        }
+    }
+
+    pub(crate) const fn with_width(mut self, width: Option<usize>) -> Self {
+        self.width = width;
+        self
     }
 
     /// Whether `row` lands inside what this viewport draws of `rows` rows.
@@ -270,8 +317,15 @@ impl Menu {
         cursor: Option<usize>,
         viewport: Option<Viewport>,
     ) -> std::io::Result<()> {
+        let columns = viewport.and_then(|viewport| viewport.width);
+
         if let Some(heading) = &self.heading {
-            console.write_paint(Tone::Title, heading, writer)?;
+            let note_room = self
+                .note
+                .as_ref()
+                .map_or(0, |note| note.width() + GAP_WIDTH);
+            let room = columns.map_or(usize::MAX, |columns| columns.saturating_sub(note_room));
+            console.write_paint(Tone::Title, shorten(heading, room), writer)?;
             if let Some(note) = &self.note {
                 write!(writer, "  ")?;
                 console.write_paint(Tone::Muted, note, writer)?;
@@ -280,7 +334,11 @@ impl Menu {
             writeln!(writer)?;
         }
 
-        let width = self.label_width();
+        let width = self.label_width().min(
+            // A label column wider than the terminal leaves nothing for the
+            // description and pushes it off screen entirely.
+            columns.map_or(usize::MAX, |columns| columns.saturating_sub(MARKER_WIDTH)),
+        );
         let rows = self.body_rows();
         let window = viewport.map_or(0..rows.len(), |viewport| viewport.window(rows.len()));
 
@@ -292,23 +350,33 @@ impl Menu {
         for row in &rows[window.clone()] {
             match row {
                 Row::Group(label) => {
-                    console.write_paint(Tone::Info, label, writer)?;
+                    let room = columns.unwrap_or(usize::MAX);
+                    console.write_paint(Tone::Info, shorten(label, room), writer)?;
                 }
                 Row::Item(item, index) => {
                     let selected = cursor == Some(*index);
                     let marker = if selected { "›" } else { " " };
-                    let padding = width.saturating_sub(item.label.width());
+                    let label = shorten(&item.label, width);
+                    let padding = width.saturating_sub(label.width());
 
                     write!(writer, "{marker} ")?;
                     console.write_paint(
                         if selected { Tone::Success } else { Tone::Info },
-                        &item.label,
+                        &label,
                         writer,
                     )?;
 
                     if let Some(description) = &item.description {
-                        write!(writer, "{:padding$}  ", "")?;
-                        console.write_paint(Tone::Muted, description, writer)?;
+                        // What is left after the marker, the label column and
+                        // the gap. Below a readable minimum the description is
+                        // dropped rather than cut to a stub.
+                        let room = columns.map_or(usize::MAX, |columns| {
+                            columns.saturating_sub(MARKER_WIDTH + width + GAP_WIDTH)
+                        });
+                        if room >= MIN_DESCRIPTION {
+                            write!(writer, "{:padding$}  ", "")?;
+                            console.write_paint(Tone::Muted, shorten(description, room), writer)?;
+                        }
                     }
                 }
             }
@@ -466,7 +534,18 @@ mod tests {
 
     fn windowed(menu: &Menu, start: usize, height: usize) -> String {
         crate::internal::collect_to_string(|buf| {
-            menu.write_frame(buf, plain(), Some(0), Some(Viewport { start, height }))
+            menu.write_frame(buf, plain(), Some(0), Some(Viewport::new(start, height)))
+        })
+    }
+
+    fn at_width(menu: &Menu, columns: usize) -> String {
+        crate::internal::collect_to_string(|buf| {
+            menu.write_frame(
+                buf,
+                plain(),
+                Some(0),
+                Some(Viewport::new(0, 999).with_width(Some(columns))),
+            )
         })
     }
 
@@ -586,6 +665,61 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn nothing_exceeds_the_given_width() {
+        // The defect this pins: without a width, a long description wrapped to
+        // column zero and destroyed the two-column layout.
+        let menu = Menu::new()
+            .with_heading("a-rather-long-project-name")
+            .with_note("pnpm")
+            .add_group(Group::new("Quality").add_item(
+                Item::new("type-check", "type-check").with_description(
+                    "Führt den TypeScript-Check in allen Packages des Workspace aus",
+                ),
+            ));
+
+        for columns in [20, 40, 60, 80, 100] {
+            for line in at_width(&menu, columns).lines() {
+                assert!(
+                    line.width() <= columns,
+                    "width {columns}: line of {} columns: {line:?}",
+                    line.width()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_shortened_entry_is_marked_as_cut() {
+        let menu = Menu::new().add_group(Group::new("G").add_item(
+            Item::new("x", "x").with_description("eine sehr lange Beschreibung, die nicht passt"),
+        ));
+        assert!(at_width(&menu, 30).contains('…'));
+    }
+
+    #[test]
+    fn a_description_with_no_room_is_dropped_rather_than_stubbed() {
+        let menu = Menu::new().add_group(Group::new("G").add_item(
+            Item::new("a-long-script-name", "a-long-script-name").with_description("beschreibung"),
+        ));
+        let narrow = at_width(&menu, 24);
+        assert!(!narrow.contains("besch"), "no room left, so no description");
+        assert!(
+            narrow.contains("a-long-script-name"),
+            "the name still shows"
+        );
+    }
+
+    #[test]
+    fn shortening_counts_display_columns_not_bytes() {
+        // German descriptions are the normal case here; multi-byte characters
+        // must not be counted twice.
+        assert_eq!(shorten("äöüß", 10), "äöüß");
+        assert_eq!(shorten("äöüß", 3).width(), 3);
+        assert!(shorten("äöüß", 3).ends_with('…'));
+        assert_eq!(shorten("abc", 1), "");
     }
 
     #[test]

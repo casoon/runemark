@@ -154,9 +154,10 @@ if outcome == Outcome::Unavailable {
 ```
 
 `Menu::render` needs no feature — it is plain formatting, and it is what a
-non-interactive caller shows. A menu taller than the terminal scrolls, with
-`↑ N more` / `↓ N more` marking what is out of view; `render` is never
-windowed, since a pipe has no height to run out of.
+non-interactive caller shows. A menu larger than the terminal is fitted to it:
+taller lists scroll, with `↑ N more` / `↓ N more` marking what is out of view,
+and entries are shortened rather than wrapped. `render` does neither, since a
+pipe has no height or width to run out of.
 
 ## Design boundaries
 

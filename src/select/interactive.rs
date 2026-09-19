@@ -178,15 +178,17 @@ impl Scroll {
     /// under the cursor; recentring on every keypress makes short moves feel
     /// like the whole screen is sliding.
     fn advance(&mut self, menu: &Menu, terminal: &RawTerminal, index: usize) -> Option<Viewport> {
-        // A terminal that reports no height gets the whole menu, as before.
-        let height = terminal.height()?;
+        // A terminal that reports no size gets the whole menu, as before.
+        let (height, columns) = terminal.size()?;
+        let columns = (columns > 0).then_some(columns);
         let rows = menu.body_height();
         // One line stays free so the frame does not push its own top off screen.
         let body = height.saturating_sub(menu.chrome_height() + 1);
 
         if body == 0 || rows <= body {
             self.start = 0;
-            return None;
+            // Still bound the width: a short list can carry long descriptions.
+            return Some(Viewport::new(0, rows.max(1)).with_width(columns));
         }
 
         let cursor = menu.row_of_item(index);
@@ -204,7 +206,7 @@ impl Scroll {
         }
 
         self.start = start;
-        Some(Viewport::new(start, body))
+        Some(Viewport::new(start, body).with_width(columns))
     }
 }
 

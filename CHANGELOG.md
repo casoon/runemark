@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-19
+
+### Fixed
+
+- A menu entry longer than the terminal is wide wrapped to column zero, which
+  destroyed the two-column layout — a 78-character description behind a
+  19-column label column produced 101-column lines. Entries are now shortened
+  to fit, with `…` marking the cut. Wrapping is deliberately not used: it would
+  change how many lines the frame occupies, which the redraw depends on.
+- Where the label column leaves too little room for a description to say
+  anything, the description is dropped rather than cut to a stub.
+
+`Menu::render` is unchanged and neither shortened nor windowed.
+
 ## [0.4.1] - 2026-09-18
 
 ### Fixed
