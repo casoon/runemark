@@ -1,6 +1,6 @@
 [package]
 name = "runemark-node"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.88"
 publish = false
@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 napi = { version = "3.12", default-features = false, features = ["napi8", "dyn-symbols"] }
 napi-derive = "3.6"
-runemark = { path = "../..", version = "0.5.2", features = ["progress"] }
+runemark = { path = "../..", version = "0.6.0", features = ["progress"] }
 
 [build-dependencies]
 napi-build = "2.4"

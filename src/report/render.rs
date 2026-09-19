@@ -85,7 +85,11 @@ impl Report {
         }
 
         let inline_width = 2
-            + self.metrics.iter().map(metric_display_width).sum::<usize>()
+            + self
+                .metrics
+                .iter()
+                .map(|metric| metric_display_width(metric, console.symbol_theme()))
+                .sum::<usize>()
             + 3 * self.metrics.len().saturating_sub(1);
         let stack_metrics = options.width().is_some_and(|width| inline_width > width);
 
@@ -319,8 +323,20 @@ fn write_metric(
     console: Console,
     writer: &mut (impl Write + ?Sized),
 ) -> std::io::Result<()> {
+    if let Some(verdict) = metric.verdict {
+        console.write_paint(
+            verdict.tone(),
+            verdict.symbol(console.symbol_theme()),
+            writer,
+        )?;
+        write!(writer, " ")?;
+    }
     console.write_paint(Tone::Muted, format!("{}: ", metric.key), writer)?;
-    console.write_paint(metric.tone.unwrap_or(Tone::Info), &metric.value, writer)?;
+    let tone = metric
+        .tone
+        .or_else(|| metric.verdict.map(crate::Verdict::tone))
+        .unwrap_or(Tone::Info);
+    console.write_paint(tone, &metric.value, writer)?;
     if let Some(ref delta) = metric.delta {
         write!(writer, " ")?;
         let trend_tone = match metric.trend {
@@ -333,13 +349,19 @@ fn write_metric(
     Ok(())
 }
 
-fn metric_display_width(metric: &super::model::Metric) -> usize {
+fn metric_display_width(metric: &super::model::Metric, theme: SymbolTheme) -> usize {
     let delta_width = metric
         .delta
         .as_deref()
         .map(|delta| display_width(delta) + 3)
         .unwrap_or_default();
-    display_width(&metric.key) + 2 + display_width(&metric.value) + delta_width
+    // The symbol counts towards the line: an ASCII `[WARN]` is six columns,
+    // and leaving it out would decide to keep metrics inline that do not fit.
+    let symbol_width = metric
+        .verdict
+        .map(|verdict| display_width(verdict.symbol(theme)) + 1)
+        .unwrap_or_default();
+    symbol_width + display_width(&metric.key) + 2 + display_width(&metric.value) + delta_width
 }
 
 /// Starts a same-line suffix `suffix_width` columns wide: a space, or, when a width is
@@ -410,6 +432,111 @@ fn display_width(text: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::SymbolTheme;
+
+    fn plain() -> Console {
+        Console::new(ColorMode::Never, false)
+    }
+
+    fn rendered(metrics: Vec<Metric>, console: Console) -> String {
+        let mut report = Report::new("t", Verdict::Info);
+        for metric in metrics {
+            report = report.add_metric(metric);
+        }
+        report.render(console)
+    }
+
+    #[test]
+    fn a_metric_without_a_verdict_is_unchanged() {
+        let shown = rendered(vec![Metric::new("files", "12")], plain());
+        assert!(shown.contains("files: 12"));
+        assert!(!shown.contains('\u{2714}'));
+    }
+
+    #[test]
+    fn a_verdict_puts_its_symbol_in_front() {
+        // The point of the whole thing: without colour, a tone says nothing.
+        // A non-terminal console picks the ASCII theme, which is exactly the
+        // case this exists for.
+        let shown = rendered(
+            vec![Metric::new("Tests", "1.2s").with_verdict(Verdict::Failed)],
+            plain(),
+        );
+        assert!(shown.contains("[FAIL] Tests: 1.2s"), "{shown:?}");
+    }
+
+    #[test]
+    fn a_unicode_console_gets_the_unicode_symbol() {
+        let shown = rendered(
+            vec![Metric::new("Tests", "1.2s").with_verdict(Verdict::Passed)],
+            plain().with_theme(SymbolTheme::Unicode),
+        );
+        assert!(shown.contains("\u{2714} Tests: 1.2s"), "{shown:?}");
+    }
+
+    #[test]
+    fn passing_and_failing_are_distinguishable_without_colour() {
+        let shown = rendered(
+            vec![
+                Metric::new("Lint", "0.2s").with_verdict(Verdict::Passed),
+                Metric::new("Tests", "1.2s").with_verdict(Verdict::Failed),
+            ],
+            plain(),
+        );
+        let lint = shown
+            .lines()
+            .find(|line| line.contains("Lint"))
+            .unwrap_or("");
+        let tests = shown
+            .lines()
+            .find(|line| line.contains("Tests"))
+            .unwrap_or("");
+        assert_ne!(
+            lint.replace("Lint: 0.2s", ""),
+            tests.replace("Tests: 1.2s", ""),
+            "the two must not render identically once the text is removed"
+        );
+    }
+
+    #[test]
+    fn the_symbol_follows_the_console_theme() {
+        let ascii = rendered(
+            vec![Metric::new("Tests", "1s").with_verdict(Verdict::Failed)],
+            Console::new(ColorMode::Never, false).with_theme(SymbolTheme::Ascii),
+        );
+        assert!(ascii.contains("[FAIL]"), "{ascii:?}");
+    }
+
+    #[test]
+    fn an_explicit_tone_still_wins() {
+        let metric = Metric::new("x", "1")
+            .with_verdict(Verdict::Failed)
+            .with_tone(Tone::Success);
+        assert_eq!(metric.tone, Some(Tone::Success));
+        let other = Metric::new("x", "1")
+            .with_tone(Tone::Success)
+            .with_verdict(Verdict::Failed);
+        assert_eq!(other.tone, Some(Tone::Success), "order must not matter");
+    }
+
+    #[test]
+    fn the_symbol_counts_towards_the_stacking_decision() {
+        // An ASCII [WARN] is six columns; leaving it out of the measurement
+        // would keep metrics inline that do not fit.
+        let metric = Metric::new("k", "v").with_verdict(Verdict::Warning);
+        let bare = Metric::new("k", "v");
+        assert!(
+            metric_display_width(&metric, SymbolTheme::Ascii)
+                > metric_display_width(&bare, SymbolTheme::Ascii)
+        );
+        assert!(
+            metric_display_width(&metric, SymbolTheme::Ascii)
+                > metric_display_width(&metric, SymbolTheme::Unicode),
+            "ASCII symbols are wider than their Unicode equivalents"
+        );
+    }
+
     use super::super::model::{Finding, FindingGroup, Metric, RenderOptions, Report};
     use crate::color::{ColorMode, Console, Tone};
     use crate::verdict::Verdict;

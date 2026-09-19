@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-19
+
+### Added
+
+- `Metric::with_verdict` renders the verdict's symbol in front of a metric, and
+  supplies its tone where none was set. A tone alone disappears with colour:
+  piped or under `NO_COLOR`, a failing metric read exactly like a passing one,
+  which made metrics unusable for status in the tools most likely to be piped.
+  An explicit `with_tone` still wins, in whichever order the two are called, and
+  the symbol counts towards the width that decides whether metrics stack.
+
 ## [0.5.2] - 2026-09-19
 
 ### Fixed

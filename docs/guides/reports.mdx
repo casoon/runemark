@@ -95,3 +95,22 @@ implying a complete list.
 Locations are files (with optional line and column), URLs, selectors or artifacts. In terminals
 that support OSC 8, `http` and `https` URLs become clickable links; see
 [Security](../security/) for how targets are validated.
+
+## Metrics as outcomes
+
+`Metric::with_verdict` renders the verdict's symbol in front of the metric, and supplies its
+tone where none was set.
+
+```rust
+use runemark::{Metric, Verdict};
+
+let metric = Metric::new("Tests", "1.2s").with_verdict(Verdict::Failed);
+```
+
+Use it whenever a metric answers "did this pass" rather than only "how many". A tone alone
+disappears with colour: piped, redirected, or under `NO_COLOR`, a failing metric reads exactly
+like a passing one. The symbol survives all three, and follows the console's theme — `✖` where
+symbols are drawn, `[FAIL]` where they are not, which is the same condition.
+
+An explicit `with_tone` still wins, in whichever order the two are called. The symbol counts
+towards the width that decides whether metrics stack, since an ASCII `[WARN]` is six columns.

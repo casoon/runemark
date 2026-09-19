@@ -117,6 +117,7 @@ pub struct Metric {
     pub tone: Option<Tone>,
     pub trend: Option<Trend>,
     pub delta: Option<String>,
+    pub verdict: Option<crate::Verdict>,
 }
 
 impl Metric {
@@ -128,12 +129,28 @@ impl Metric {
             tone: None,
             trend: None,
             delta: None,
+            verdict: None,
         }
     }
 
     /// Sets the semantic tone for this metric.
     pub fn with_tone(mut self, tone: Tone) -> Self {
         self.tone = Some(tone);
+        self
+    }
+
+    /// Marks this metric as an outcome, rendering its verdict's symbol.
+    ///
+    /// A tone alone disappears with colour: piped, or under `NO_COLOR`, a
+    /// failing metric reads exactly like a passing one. The symbol survives
+    /// both, which is what makes a metric usable as a status rather than only
+    /// as a number.
+    ///
+    /// The verdict also supplies the tone where none was set, so the two
+    /// cannot drift apart; an explicit [`Metric::with_tone`] still wins,
+    /// whichever order they are called in.
+    pub fn with_verdict(mut self, verdict: crate::Verdict) -> Self {
+        self.verdict = Some(verdict);
         self
     }
 

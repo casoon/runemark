@@ -80,6 +80,20 @@ let report = Report::new("Site audit", Verdict::Warning).add_group(
 print!("{}", report.render(runemark::Console::stdout(runemark::ColorMode::Auto)));
 ```
 
+### Metrics as outcomes
+
+A metric carries a value; `with_verdict` also makes it a status:
+
+```rust
+use runemark::{Metric, Verdict};
+
+let metric = Metric::new("Tests", "1.2s").with_verdict(Verdict::Failed);
+```
+
+A tone alone disappears with colour — piped, or under `NO_COLOR`, a failing
+metric reads exactly like a passing one. The verdict's symbol survives both, and
+supplies the tone where none was set.
+
 ### Adaptive layout
 
 Applications can provide a known terminal width without giving Runemark access
