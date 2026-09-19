@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-19
+
+### Fixed
+
+- A short menu no longer advertises `/ search` in its footer. Filtering still
+  works — the key is never taken away — but a two-entry yes/no question
+  offering to search itself reads as clutter, and below a handful of entries
+  every one of them is already on screen.
+
 ## [0.5.1] - 2026-09-19
 
 ### Fixed
