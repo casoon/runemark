@@ -65,10 +65,14 @@ boundaries:
 2. After merging to `main`, optionally run `gh workflow run release.yml --ref main`
    to build and smoke-test all native binaries before tagging (dry run, nothing
    is published).
-3. Push the tag `v<version>` from `main`. The Release workflow builds the six
-   native binaries, publishes the crate to crates.io, and attaches the binaries
-   plus `SHA256SUMS` to the GitHub release.
-4. Publish the npm package manually:
+3. Run `cargo publish` from your machine. The registry token stays there rather
+   than in repository secrets, and releasing is a deliberate step instead of a
+   side effect of pushing a tag.
+4. Push the tag `v<version>` from `main`. The Release workflow builds the
+   native binaries, confirms the version is on crates.io, and attaches the
+   binaries plus `SHA256SUMS` to the GitHub release. A tag pushed before
+   publishing fails with that reason.
+5. Publish the npm package the same way:
 
    ```bash
    cd packages/runemark
