@@ -504,20 +504,39 @@ impl Menu {
                 console.write_paint(Tone::Title, query, writer)?;
             }
             writeln!(writer)?;
-        } else if !self.hints.is_empty() {
+        } else if !self.hints.is_empty() || self.offers_search(cursor) {
             writeln!(writer)?;
-            for (position, hint) in self.hints.iter().enumerate() {
-                if position > 0 {
+            let mut written = 0;
+            // `/` is reserved for the filter and cannot be bound as a hint, so
+            // nothing else can advertise it. A key the menu answers to but
+            // never mentions is a key nobody presses.
+            if self.offers_search(cursor) {
+                console.write_paint(Tone::Success, '/', writer)?;
+                write!(writer, " ")?;
+                console.write_paint(Tone::Muted, "search", writer)?;
+                written += 1;
+            }
+            for hint in &self.hints {
+                if written > 0 {
                     write!(writer, "   ")?;
                 }
                 console.write_paint(Tone::Success, hint.key, writer)?;
                 write!(writer, " ")?;
                 console.write_paint(Tone::Muted, &hint.label, writer)?;
+                written += 1;
             }
             writeln!(writer)?;
         }
 
         Ok(())
+    }
+
+    /// Whether this frame should advertise the filter.
+    ///
+    /// A cursor means the menu is being driven from a keyboard; `render` passes
+    /// none, and offering a key to a pipe would be a lie.
+    fn offers_search(&self, cursor: Option<usize>) -> bool {
+        cursor.is_some() && !self.is_empty()
     }
 
     /// The body row showing item `index`, for keeping the cursor in view.
@@ -542,8 +561,9 @@ impl Menu {
     #[cfg(any(all(feature = "select", unix), test))]
     fn chrome_height(&self, searching: bool) -> usize {
         let heading = if self.heading.is_some() { 2 } else { 0 };
-        // While searching, the query line replaces the hint line.
-        let footer = if searching || !self.hints.is_empty() {
+        // Interactive frames always carry a footer: the query line while
+        // searching, otherwise at least the filter affordance.
+        let footer = if searching || !self.hints.is_empty() || !self.is_empty() {
             2
         } else {
             0
@@ -610,6 +630,36 @@ mod tests {
         assert!(output.contains("  dev "));
         assert!(output.contains("Build\n"));
         assert!(output.trim_end().ends_with("U Updates"));
+    }
+
+    #[test]
+    fn a_keyboard_frame_advertises_the_filter() {
+        // `/` cannot be bound as a hint, so if the menu does not mention it,
+        // nothing will.
+        let menu = menu();
+        let interactive = crate::internal::collect_to_string(|buf| {
+            menu.write_frame(buf, plain(), Some(0), None, None)
+        });
+        assert!(interactive.contains("/ search"));
+        assert!(
+            interactive.contains("U Updates"),
+            "and the menu's own hints"
+        );
+    }
+
+    #[test]
+    fn a_rendered_frame_offers_no_keys() {
+        // Printed to a pipe there is no keyboard, so offering one would lie.
+        assert!(!menu().render(plain()).contains("/ search"));
+    }
+
+    #[test]
+    fn an_empty_menu_advertises_nothing() {
+        let empty = Menu::new().with_heading("nothing");
+        let shown = crate::internal::collect_to_string(|buf| {
+            empty.write_frame(buf, plain(), Some(0), None, None)
+        });
+        assert!(!shown.contains("search"));
     }
 
     #[test]
@@ -728,12 +778,10 @@ mod tests {
         // The whole point: the frame must not outgrow the terminal, or the
         // redraw moves the cursor further up than there are lines.
         let menu = long_menu(40);
+        let chrome = menu.chrome_height(false);
         for start in [0, 1, 7, 20, 39] {
             for height in [3, 5, 10, 25] {
-                let body = windowed(&menu, start, height)
-                    .lines()
-                    .skip(2) // heading and its blank line
-                    .count();
+                let body = windowed(&menu, start, height).lines().count() - chrome;
                 assert!(
                     body <= height,
                     "start {start}, height {height}: drew {body} body lines"
@@ -745,8 +793,9 @@ mod tests {
     #[test]
     fn a_window_always_draws_something() {
         let menu = long_menu(40);
+        let chrome = menu.chrome_height(false);
         for height in [1, 2, 3] {
-            let body = windowed(&menu, 0, height).lines().skip(2).count();
+            let body = windowed(&menu, 0, height).lines().count() - chrome;
             assert!(body >= 1, "height {height} drew nothing");
         }
     }
