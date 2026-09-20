@@ -98,6 +98,13 @@ impl Item {
 pub struct Group {
     pub label: String,
     pub items: Vec<Item>,
+    /// The tab this group shares with its neighbours, under [`Layout::Tabs`].
+    ///
+    /// Without one a group is its own tab. Consecutive groups naming the same
+    /// tab collapse into it and keep their labels as headings inside it.
+    pub tab: Option<String>,
+    /// Whether the tab row draws a divider in front of this group's tab.
+    pub divider: bool,
 }
 
 impl Group {
@@ -105,6 +112,8 @@ impl Group {
         Self {
             label: label.into(),
             items: Vec::new(),
+            tab: None,
+            divider: false,
         }
     }
 
@@ -112,6 +121,35 @@ impl Group {
         self.items.push(item);
         self
     }
+
+    /// Puts this group in a shared tab rather than one of its own.
+    ///
+    /// For a run of groups that are the same kind of thing and would otherwise
+    /// flood the tab row — a workspace's packages against a handful of
+    /// actions. Inside the tab each keeps its label as a heading, so nothing
+    /// about the grouping is lost; only the row gets its length back.
+    pub fn in_tab(mut self, tab: impl Into<String>) -> Self {
+        self.tab = Some(tab.into());
+        self
+    }
+
+    /// Marks this group's tab as the start of a different kind of thing.
+    ///
+    /// A divider says the tabs on either side answer different questions —
+    /// actions on one side, packages on the other — rather than being peers.
+    pub fn with_divider(mut self) -> Self {
+        self.divider = true;
+        self
+    }
+}
+
+/// One tab: a run of groups drawn as a single entry in the tab row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Tab<'a> {
+    label: &'a str,
+    /// The groups it draws, as indices into the menu's own.
+    groups: std::ops::Range<usize>,
+    divider: bool,
 }
 
 /// A key shown in the footer, reported back when pressed.
@@ -159,6 +197,8 @@ const TAB_GAP: usize = 3;
 const FOOTER_GAP: usize = 3;
 /// What a dropped run of tabs costs to mark: the ellipsis and its gap.
 const TAB_ELLIPSIS: usize = 1 + TAB_GAP;
+/// What a divider between two tabs costs beyond the gap already there.
+const TAB_DIVIDER: usize = 1 + TAB_GAP;
 /// Tabs beyond this many have no digit left to select them; the arrow keys
 /// still reach them.
 const TAB_KEYS: usize = 9;
@@ -197,23 +237,38 @@ fn shorten(text: &str, max: usize) -> std::borrow::Cow<'_, str> {
 /// no longer the word its digit belongs to. The active tab is the seed and the
 /// window grows outwards from it, so switching along the row scrolls it rather
 /// than jumping the whole thing.
-fn tab_window(labels: &[String], active: usize, columns: Option<usize>) -> std::ops::Range<usize> {
+fn tab_window(
+    labels: &[(String, bool)],
+    active: usize,
+    columns: Option<usize>,
+) -> std::ops::Range<usize> {
     let all = 0..labels.len();
     let Some(columns) = columns else {
         return all;
     };
     let room = columns.saturating_sub(MARKER_WIDTH);
 
+    // Measured the same way the row is written, dividers included, or a window
+    // that fits on paper overflows on screen.
     let width = |range: &std::ops::Range<usize>| {
-        let text: usize = labels[range.clone()].iter().map(|l| l.width()).sum();
-        let gaps = TAB_GAP * range.len().saturating_sub(1);
-        let before = if range.start > 0 { TAB_ELLIPSIS } else { 0 };
-        let after = if range.end < labels.len() {
-            TAB_ELLIPSIS
-        } else {
-            0
-        };
-        text + gaps + before + after
+        let mut width = 0;
+        for (drawn, index) in range.clone().enumerate() {
+            let (label, divider) = &labels[index];
+            if drawn > 0 {
+                width += TAB_GAP;
+                if *divider {
+                    width += TAB_DIVIDER;
+                }
+            }
+            width += label.width();
+        }
+        if range.start > 0 {
+            width += TAB_ELLIPSIS;
+        }
+        if range.end < labels.len() {
+            width += TAB_ELLIPSIS;
+        }
+        width
     };
 
     if width(&all) <= room {
@@ -486,31 +541,59 @@ impl Menu {
     /// A single group is no reason for a tab row: there is nothing to switch
     /// to, and the row would cost two lines to say what the heading says.
     fn active_tab(&self, view: View<'_>) -> Option<usize> {
-        if self.layout != Layout::Tabs || self.groups.len() < 2 || view.query.is_some() {
+        if self.layout != Layout::Tabs || view.query.is_some() {
+            return None;
+        }
+        let tabs = self.tabs().len();
+        if tabs < 2 {
             return None;
         }
         // A tab index outside the menu is clamped rather than refused: the
         // caller holds it across redraws, and a menu may be rebuilt smaller.
-        Some(view.tab?.min(self.groups.len() - 1))
+        Some(view.tab?.min(tabs - 1))
     }
 
-    /// How many groups there are, for the interactive path's tab arithmetic.
+    /// The tab row, derived from the groups.
+    ///
+    /// A group with no [`Group::tab`] is its own tab. Consecutive groups
+    /// naming the same one collapse into it, and the first of the run decides
+    /// whether a divider precedes it.
+    fn tabs(&self) -> Vec<Tab<'_>> {
+        let mut tabs: Vec<Tab<'_>> = Vec::with_capacity(self.groups.len());
+        for (index, group) in self.groups.iter().enumerate() {
+            let label = group.tab.as_deref().unwrap_or(&group.label);
+            match tabs.last_mut() {
+                Some(last) if group.tab.is_some() && last.label == label => {
+                    last.groups.end = index + 1;
+                }
+                _ => tabs.push(Tab {
+                    label,
+                    groups: index..index + 1,
+                    divider: group.divider,
+                }),
+            }
+        }
+        tabs
+    }
+
+    /// How many tabs there are, for the interactive path's arithmetic.
     #[cfg(any(all(feature = "select", unix), test))]
-    fn group_count(&self) -> usize {
-        self.groups.len()
+    fn tab_count(&self) -> usize {
+        self.tabs().len()
     }
 
     /// Each tab as drawn, with the digit that selects it.
-    fn tab_labels(&self) -> Vec<String> {
-        self.groups
-            .iter()
+    fn tab_labels(&self) -> Vec<(String, bool)> {
+        self.tabs()
+            .into_iter()
             .enumerate()
-            .map(|(index, group)| {
-                if index < TAB_KEYS {
-                    format!("{} {}", index + 1, group.label)
+            .map(|(index, tab)| {
+                let label = if index < TAB_KEYS {
+                    format!("{} {}", index + 1, tab.label)
                 } else {
-                    group.label.clone()
-                }
+                    tab.label.to_owned()
+                };
+                (label, tab.divider)
             })
             .collect()
     }
@@ -540,11 +623,19 @@ impl Menu {
             column += TAB_ELLIPSIS;
         }
         for index in window.clone() {
+            let (label, divider) = &labels[index];
             if index > window.start {
                 write!(writer, "{:TAB_GAP$}", "")?;
                 column += TAB_GAP;
+                // Only between two drawn tabs. Leading a row with a divider
+                // would separate the tabs from nothing, and after an ellipsis
+                // the break is already marked.
+                if *divider {
+                    console.write_paint(Tone::Muted, "│", writer)?;
+                    write!(writer, "{:TAB_GAP$}", "")?;
+                    column += TAB_DIVIDER;
+                }
             }
-            let label = &labels[index];
             if index == active {
                 console.write_paint(Tone::Title, label, writer)?;
                 underline = Some((column, label.width()));
@@ -594,16 +685,26 @@ impl Menu {
         let query = view.query.filter(|query| !query.is_empty());
 
         let Some(query) = query else {
-            // One tab's entries carry no heading: the tab row above already
-            // names the group, and repeating it would spend a line saying so
-            // twice on the screen that ran out of lines.
-            if let Some(tab) = self.active_tab(view) {
-                return self.groups[tab]
-                    .items
-                    .iter()
-                    .enumerate()
-                    .map(|(index, item)| Row::Item(item, index))
-                    .collect();
+            if let Some(active) = self.active_tab(view) {
+                let tab = self.tabs().swap_remove(active);
+                let mut rows = Vec::new();
+                let mut index = 0;
+                for group in &self.groups[tab.groups] {
+                    // A group that gave the tab its name carries no heading:
+                    // the row above says it already, and repeating it spends a
+                    // line on the screen that ran out of lines. One sharing a
+                    // tab keeps its heading, or the tab would be a flat run of
+                    // entries from several packages with nothing telling them
+                    // apart.
+                    if group.label != tab.label {
+                        rows.push(Row::Group(&group.label));
+                    }
+                    for item in &group.items {
+                        rows.push(Row::Item(item, index));
+                        index += 1;
+                    }
+                }
+                return rows;
             }
 
             let mut rows = Vec::with_capacity(self.groups.len() + self.len());
@@ -1496,9 +1597,131 @@ mod tests {
         }
     }
 
+    /// Action tabs, then a run of packages sharing one, as opi builds it.
+    fn mixed(packages: usize) -> Menu {
+        let mut menu = tabbed(3).with_layout(Layout::Tabs);
+        for n in 0..packages {
+            let mut group = Group::new(format!("@scope/pkg{n}"))
+                .in_tab("Packages")
+                .add_item(Item::new(format!("p{n}"), format!("p{n}")));
+            if n == 0 {
+                group = group.with_divider();
+            }
+            menu = menu.add_group(group);
+        }
+        menu
+    }
+
+    #[test]
+    fn groups_sharing_a_tab_collapse_into_one() {
+        // 52 packages against 6 actions is what the tab row cannot carry.
+        let menu = mixed(52);
+        assert_eq!(menu.groups.len(), 55);
+        assert_eq!(menu.tabs().len(), 4, "three actions and one Packages");
+        assert_eq!(menu.tabs()[3].label, "Packages");
+    }
+
+    #[test]
+    fn a_shared_tab_keeps_each_group_heading() {
+        // Without them the tab is a flat run of entries from several packages
+        // with nothing telling them apart.
+        let menu = mixed(3);
+        let rows = menu.body_rows(on_tab(3));
+        let headings: Vec<&str> = rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::Group(label) => Some(*label),
+                Row::Item(..) => None,
+            })
+            .collect();
+        assert_eq!(headings, ["@scope/pkg0", "@scope/pkg1", "@scope/pkg2"]);
+    }
+
+    #[test]
+    fn a_shared_tab_counts_its_entries_across_the_groups() {
+        let indices: Vec<usize> = mixed(3)
+            .body_rows(on_tab(3))
+            .iter()
+            .filter_map(|row| match row {
+                Row::Item(_, index) => Some(*index),
+                Row::Group(_) => None,
+            })
+            .collect();
+        assert_eq!(indices, [0, 1, 2], "the cursor counts the whole tab");
+    }
+
+    #[test]
+    fn a_group_that_names_its_own_tab_still_carries_no_heading() {
+        let menu = mixed(3);
+        let rows = menu.body_rows(on_tab(0));
+        assert!(rows.iter().all(|row| matches!(row, Row::Item(..))));
+    }
+
+    #[test]
+    fn the_divider_marks_where_the_kind_changes() {
+        let shown = framed(&mixed(3), on_tab(0));
+        let row = shown.lines().find(|l| l.contains("1 Group0")).unwrap();
+        assert!(row.contains("│"), "{row:?}");
+        let (before, after) = row.split_once('│').unwrap();
+        assert!(before.contains("3 Group2"), "actions on one side");
+        assert!(after.contains("4 Packages"), "packages on the other");
+    }
+
+    #[test]
+    fn a_divider_never_leads_the_row() {
+        // It would separate the tabs from nothing. With the window starting on
+        // the Packages tab, the ellipsis already marks the break.
+        let shown = crate::internal::collect_to_string(|buf| {
+            mixed(3).write_frame(
+                buf,
+                plain(),
+                Some(0),
+                Some(Viewport::new(0, 999).with_width(Some(24))),
+                on_tab(3),
+            )
+        });
+        let row = shown.lines().find(|l| l.contains("Packages")).unwrap();
+        assert!(!row.trim_start().starts_with('│'), "{row:?}");
+    }
+
+    #[test]
+    fn a_divider_is_counted_in_the_row_width() {
+        let menu = mixed(3);
+        for columns in [20, 28, 36, 50, 80] {
+            let shown = crate::internal::collect_to_string(|buf| {
+                menu.write_frame(
+                    buf,
+                    plain(),
+                    Some(0),
+                    Some(Viewport::new(0, 999).with_width(Some(columns))),
+                    on_tab(0),
+                )
+            });
+            for line in shown.lines() {
+                assert!(
+                    line.width() <= columns,
+                    "width {columns}: line of {} columns: {line:?}",
+                    line.width()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_menu_whose_groups_all_share_one_tab_gets_no_tab_row() {
+        // One tab is nothing to switch to, however many groups feed it.
+        let menu = Menu::new()
+            .with_layout(Layout::Tabs)
+            .add_group(Group::new("a").in_tab("All").add_item(Item::new("1", "1")))
+            .add_group(Group::new("b").in_tab("All").add_item(Item::new("2", "2")));
+        assert!(menu.active_tab(on_tab(0)).is_none());
+    }
+
     #[test]
     fn a_narrow_tab_row_keeps_the_active_tab_visible() {
-        let labels: Vec<String> = (0..9).map(|n| format!("{} Group{n}", n + 1)).collect();
+        let labels: Vec<(String, bool)> = (0..9)
+            .map(|n| (format!("{} Group{n}", n + 1), false))
+            .collect();
         for active in 0..labels.len() {
             for columns in [20, 30, 45, 80] {
                 let window = tab_window(&labels, active, Some(columns));

@@ -183,7 +183,7 @@ impl Menu {
     fn act_on_digit(&self, pressed: char, state: &State) -> Option<Action> {
         self.active_tab(state.view())?;
         let digit = usize::try_from(pressed.to_digit(10)?).ok()?;
-        let tab = digit.checked_sub(1).filter(|tab| *tab < self.group_count());
+        let tab = digit.checked_sub(1).filter(|tab| *tab < self.tab_count());
         Some(tab.map_or(Action::Ignore, |tab| Action::Update(state.on_tab(tab))))
     }
 
@@ -195,7 +195,7 @@ impl Menu {
         let Some(active) = self.active_tab(state.view()) else {
             return Action::Ignore;
         };
-        let last = self.group_count() - 1;
+        let last = self.tab_count() - 1;
         let next = if forward {
             if active == last { 0 } else { active + 1 }
         } else if active == 0 {

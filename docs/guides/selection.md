@@ -111,7 +111,8 @@ web-casoon                                            pnpm
   dev:landings
 ```
 
-**When to ask for it is the application's call.** A menu knows how many entries it has, not
+**Which groups become which tabs is the application's call**, as is when to ask for the
+layout at all. A menu knows how many entries it has, not
 how much of the screen its caller is willing to spend, and a layout that flipped on its own
 whenever a window was resized would rearrange the list under a cursor already moving through
 it.
@@ -127,6 +128,51 @@ digit belongs to.
 
 A single group gets no tab row. There is nothing to switch to, and the row would spend two
 lines repeating the heading.
+
+### Groups that share a tab
+
+`Group::in_tab` puts a run of groups in one tab instead of one each, and `Group::with_divider`
+marks where the row stops being one kind of thing and starts being another:
+
+```rust
+# use runemark::{Group, Item, Layout, Menu};
+# let menu = Menu::new().with_layout(Layout::Tabs);
+# let menu = menu.add_group(Group::new("Build").add_item(Item::new("b", "build")));
+let menu = menu
+    .add_group(
+        Group::new("@scope/app")
+            .in_tab("Packages")
+            .with_divider()
+            .add_item(Item::new("app/test", "test")),
+    )
+    .add_group(
+        Group::new("@scope/site")
+            .in_tab("Packages")
+            .add_item(Item::new("site/test", "test")),
+    );
+```
+
+```
+  1 Development   2 Build   3 Quality   4 Deploy   │   5 Packages
+                                                       ──────────
+@scope/app
+› test
+@scope/site
+  test
+```
+
+Inside the tab each group keeps its label as a heading, so the grouping survives; only the
+row gets its length back. A group that gave the tab its name carries no heading, since the
+row above says it already.
+
+This is for a set of groups the row cannot carry. One tab each stops working sooner than it
+looks: a real workspace here has 52 packages against 6 actions, which is a row of 58 that is
+almost entirely package names, permanently scrolling, with the digits worthless past the
+ninth. Collapsed, it is seven tabs.
+
+A divider is drawn only between two tabs that are both on screen. Leading the row with one
+would separate the tabs from nothing, and where the window starts mid-row the ellipsis
+already marks the break.
 
 `Menu::render` ignores the layout and lists every group. Nothing on the other end of a pipe
 can press a key to reach the second tab, so hiding one there would lose entries rather than

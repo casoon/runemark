@@ -172,8 +172,10 @@ matches above scattered ones.
 
 `Layout::Tabs` puts the groups in a row above the list and shows only the
 active one's entries, for a list that would otherwise be taller than the
-terminal — `←` `→` and the digits switch groups. `Menu::with_summary` adds a
-second heading line for what the menu adds up to.
+terminal — `←` `→` and the digits switch groups. `Group::in_tab` collapses a
+run of groups into one tab where they would otherwise flood the row, and
+`Group::with_divider` marks where one kind of tab ends and another begins.
+`Menu::with_summary` adds a second heading line for what the menu adds up to.
 
 `Menu::render` needs no feature — it is plain formatting, and it is what a
 non-interactive caller shows. A menu larger than the terminal is fitted to it:

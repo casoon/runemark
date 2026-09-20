@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-20
+
+### Added
+
+- `Group::in_tab` puts a run of groups in one tab rather than one each, and
+  `Group::with_divider` draws a divider in front of a tab where the row stops
+  being one kind of thing and starts being another. Inside a shared tab each
+  group keeps its label as a heading, so the grouping survives and only the
+  row gets its length back.
+
+  One tab per group stops working sooner than it looks. Measured on a real
+  workspace: 52 packages against 6 action groups is a row of 58 that is almost
+  entirely package names, permanently scrolling, with the digits worthless
+  past the ninth. Collapsed, it is seven tabs.
+
+### Changed
+
+- `Group` carries two more public fields, `tab` and `divider`, so a literal
+  construction of it no longer compiles. `Group::new` and the builders are
+  unaffected.
+
+
 ## [0.7.1] - 2026-09-20
 
 ### Fixed
