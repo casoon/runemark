@@ -19,6 +19,14 @@ const nodeVersionMatch = nodeCargoToml.match(/name\s*=\s*"runemark-node"[\s\S]*?
 assert.ok(nodeVersionMatch, 'bindings/node/Cargo.toml must contain a package version')
 const nodeVersion = nodeVersionMatch[1]
 
+// The binding's own dependency on the crate beside it. Bumping the package
+// version and leaving this behind resolves against crates.io instead of the
+// checkout, and every workflow touching bindings/node fails to select a
+// version. That shipped once, in 0.7.0.
+const nodeDepMatch = nodeCargoToml.match(/^runemark\s*=\s*\{[^}]*?version\s*=\s*"([^"]+)"/m)
+assert.ok(nodeDepMatch, 'bindings/node/Cargo.toml must depend on runemark with a version')
+const nodeDepVersion = nodeDepMatch[1]
+
 // 3. Read packages/runemark/package.json
 const pkgJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'packages/runemark/package.json'), 'utf8'))
 const pkgVersion = pkgJson.version
@@ -26,9 +34,15 @@ const pkgVersion = pkgJson.version
 console.log(`Checking version parity:`)
 console.log(`  Root Cargo.toml:              ${rootVersion}`)
 console.log(`  bindings/node/Cargo.toml:     ${nodeVersion}`)
+console.log(`  bindings/node runemark dep:   ${nodeDepVersion}`)
 console.log(`  packages/runemark/package.json: ${pkgVersion}`)
 
 assert.equal(nodeVersion, rootVersion, 'bindings/node version must match root crate version')
+assert.equal(
+  nodeDepVersion,
+  rootVersion,
+  "bindings/node's runemark dependency must match root crate version",
+)
 assert.equal(pkgVersion, rootVersion, 'packages/runemark version must match root crate version')
 
 // 4. Validate CHANGELOG.md vs git tags
