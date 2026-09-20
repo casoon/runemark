@@ -288,7 +288,7 @@ dependencies = [
 
 [[package]]
 name = "runemark"
-version = "0.3.3"
+version = "0.7.1"
 dependencies = [
  "indicatif",
  "unicode-width",
@@ -296,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "runemark-node"
-version = "0.3.3"
+version = "0.7.1"
 dependencies = [
  "napi",
  "napi-build",

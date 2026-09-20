@@ -155,16 +155,8 @@ impl Menu {
         }
         // Digits before hints: a menu with tabs has given its digits away, and
         // the tab is the one of the two the user can see on screen.
-        if self.active_tab(state.view()).is_some()
-            && let Some(digit) = pressed.to_digit(10)
-            && digit >= 1
-        {
-            let tab = digit as usize - 1;
-            return if tab < self.group_count() {
-                Action::Update(state.on_tab(tab))
-            } else {
-                Action::Ignore
-            };
+        if let Some(action) = self.act_on_digit(pressed, state) {
+            return action;
         }
         // Hint keys win over the built-in 'q', so a menu may bind 'q'.
         if let Some(hint) = self
@@ -178,6 +170,21 @@ impl Menu {
             return Action::Finish(Outcome::Cancelled);
         }
         Action::Ignore
+    }
+
+    /// What a digit does, or `None` where the menu has no tabs to reach.
+    ///
+    /// A tabbed menu has given its digits away, so one that names no tab does
+    /// nothing rather than falling through to a hint bound to it. That covers
+    /// `0`, which no tab carries, and any digit past the last group.
+    ///
+    /// Written without a `let` chain: those are stable from Rust 1.88, and
+    /// this crate compiles on 1.85.
+    fn act_on_digit(&self, pressed: char, state: &State) -> Option<Action> {
+        self.active_tab(state.view())?;
+        let digit = usize::try_from(pressed.to_digit(10)?).ok()?;
+        let tab = digit.checked_sub(1).filter(|tab| *tab < self.group_count());
+        Some(tab.map_or(Action::Ignore, |tab| Action::Update(state.on_tab(tab))))
     }
 
     /// Moves one tab along, wrapping, and puts the cursor on its first entry.
@@ -350,7 +357,7 @@ enum Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::select::{Group, Item, Layout};
+    use crate::select::{Group, Hint, Item, Layout};
 
     fn tabbed() -> Menu {
         let mut menu = Menu::new().with_layout(Layout::Tabs);
@@ -402,6 +409,32 @@ mod tests {
         let menu = tabbed();
         let state = after(&menu, &State::default(), Key::Char('2'));
         assert_eq!(after(&menu, &state, Key::Char('7')).tab, 1, "unchanged");
+    }
+
+    #[test]
+    fn a_digit_no_tab_carries_is_swallowed_rather_than_passed_on() {
+        // The menu has given its digits away; falling through to a hint bound
+        // to one would make the same key mean two things on one screen.
+        let menu = tabbed().add_hint(Hint::new('0', "Zero"));
+        assert_eq!(
+            menu.act_on(Key::Char('0'), &State::default()),
+            Action::Ignore
+        );
+        assert_eq!(
+            menu.act_on(Key::Char('8'), &State::default()),
+            Action::Ignore
+        );
+    }
+
+    #[test]
+    fn a_flat_menu_still_lets_a_digit_reach_its_hint() {
+        let menu = tabbed()
+            .with_layout(Layout::Flat)
+            .add_hint(Hint::new('2', "Two"));
+        assert_eq!(
+            menu.act_on(Key::Char('2'), &State::default()),
+            Action::Finish(Outcome::Hotkey('2'))
+        );
     }
 
     #[test]

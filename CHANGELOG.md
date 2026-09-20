@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-20
+
+### Fixed
+
+- `0.7.0` did not compile on Rust `1.85`, the version this crate declares.
+  The tab digits were matched with a `let` chain, which is stable only from
+  `1.88`; the local toolchain accepted it and the declared minimum was never
+  tried. The same key is now read without one, and a digit no tab carries is
+  swallowed rather than falling through to a hint bound to it.
+- The Node binding required `runemark ^0.6.0` while the crate beside it was
+  `0.7.0`, so every workflow that touches `bindings/node` failed to resolve.
+  Its package version was bumped for the release, its dependency on the crate
+  was not.
+
 ## [0.7.0] - 2026-09-19
 
 ### Added
