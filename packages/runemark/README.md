@@ -49,8 +49,8 @@ const report = new RunemarkReport({
   title: 'Accessibility audit',
   verdict: Verdict.Warning,
   metrics: [
-    { key: 'Pages checked', value: '42', tone: 'success' },
-    { key: 'Findings', value: '3', tone: 'warning' },
+    { key: 'Pages checked', value: '42', verdict: Verdict.Passed },
+    { key: 'Findings', value: '3', verdict: Verdict.Warning },
   ],
   groups: [
     {
@@ -78,6 +78,19 @@ process.stdout.write(report.render({
 ```
 
 For one-off reports, use `renderReport(input, options)` instead.
+
+A metric's `verdict` renders that verdict's symbol in front of it, which is
+what makes a metric readable as a status rather than only as a number:
+
+```
+[WARN] Accessibility audit
+[OK] Pages checked: 42   [WARN] Findings: 3
+```
+
+Prefer it to `tone` alone. A tone is colour and nothing else, so in a pipe,
+in CI or under `NO_COLOR` a failing metric reads exactly like a passing one.
+The verdict also supplies the tone where none is set, so the two cannot drift
+apart; an explicit `tone` still wins, whichever order they are given in.
 
 ## Errors and file changes
 

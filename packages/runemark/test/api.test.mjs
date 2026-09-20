@@ -97,6 +97,53 @@ test('error and diff renderers use the same native presentation core', () => {
   )
 })
 
+test('a metric verdict is legible without colour', () => {
+  // The gap this pins: a metric carried a tone and nothing else, and a tone is
+  // nothing in a pipe or under NO_COLOR — "Errors: 3" read exactly like a
+  // clean count. The Rust core gained the verdict in 0.6.0; Node did not get
+  // it until 0.8.1.
+  const report = new RunemarkReport({
+    schemaVersion: 1,
+    title: 'Audit',
+    verdict: Verdict.Failed,
+    metrics: [
+      { key: 'Errors', value: '3', verdict: Verdict.Failed },
+      { key: 'Warnings', value: '0', verdict: Verdict.Passed },
+    ],
+  })
+
+  const output = report.render({ ...plain, width: 80 })
+
+  assert.match(output, /\[FAIL\] Errors: 3/)
+  assert.match(output, /\[OK\] Warnings: 0/)
+})
+
+test('a metric verdict rejects a value that is not one', () => {
+  assert.throws(
+    () =>
+      new RunemarkReport({
+        schemaVersion: 1,
+        title: 'Audit',
+        verdict: Verdict.Warning,
+        metrics: [{ key: 'Errors', value: '3', verdict: 'catastrophic' }],
+      }).render(plain),
+    /verdict/,
+  )
+})
+
+test('an explicit tone still wins over the verdict it was given', () => {
+  const report = new RunemarkReport({
+    schemaVersion: 1,
+    title: 'Audit',
+    verdict: Verdict.Warning,
+    metrics: [{ key: 'Errors', value: '3', verdict: Verdict.Failed, tone: 'muted' }],
+  })
+
+  // The symbol comes from the verdict either way; only the colour is the
+  // tone's, and plain output cannot show it.
+  assert.match(report.render({ ...plain, width: 80 }), /\[FAIL\] Errors: 3/)
+})
+
 test('report rendering has exact byte-for-byte parity with Rust core', () => {
   const report = new RunemarkReport({
     schemaVersion: 1,

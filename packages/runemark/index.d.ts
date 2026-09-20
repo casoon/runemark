@@ -47,6 +47,13 @@ export interface FindingGroupInput {
 export interface MetricInput {
   key: string
   value: string
+  /**
+   * Renders this verdict's symbol in front of the metric. Without it a tone is
+   * the only signal, and a tone is nothing in a pipe or under NO_COLOR — a
+   * failing metric read exactly like a passing one. The verdict also supplies
+   * the tone where none is set; an explicit `tone` still wins.
+   */
+  verdict?: Verdict
   tone?: Tone
   trend?: 'positive' | 'negative' | 'neutral'
   delta?: string

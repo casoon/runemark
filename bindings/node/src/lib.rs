@@ -31,6 +31,11 @@ pub struct JsRenderOptions {
 pub struct JsMetric {
     pub key: String,
     pub value: String,
+    /// One of the verdicts `render_verdict` takes. Renders that verdict's
+    /// symbol in front of the metric, so a failing one still reads as failing
+    /// with colour off — in a pipe or under `NO_COLOR` a tone alone is
+    /// nothing, and `errors: 3` looked exactly like `errors: 0`.
+    pub verdict: Option<String>,
     pub tone: Option<String>,
     pub trend: Option<String>,
     pub delta: Option<String>,
@@ -324,6 +329,11 @@ fn report_from_input(input: JsReportInput) -> Result<Report> {
     }
     for metric in input.metrics.unwrap_or_default() {
         let mut output = runemark::Metric::new(metric.key, metric.value);
+        if let Some(verdict) = metric.verdict {
+            output = output.with_verdict(parse_verdict(&verdict)?);
+        }
+        // After the verdict, which supplies a tone only where none was set.
+        // An explicit tone wins either way; ordering it here says so.
         if let Some(tone) = metric.tone {
             output = output.with_tone(parse_tone(&tone)?);
         }
@@ -581,6 +591,7 @@ mod tests {
             metrics: Some(vec![JsMetric {
                 key: "Errors".into(),
                 value: "0".into(),
+                verdict: Some("pass".into()),
                 tone: Some("success".into()),
                 trend: Some("positive".into()),
                 delta: Some("-2".into()),
@@ -624,6 +635,7 @@ mod tests {
             metrics: Some(vec![JsMetric {
                 key: "K".into(),
                 value: "V".into(),
+                verdict: None,
                 tone: None,
                 trend: Some("invalid_trend".into()),
                 delta: Some("+1".into()),

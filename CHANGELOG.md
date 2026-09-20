@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-09-20
+
+### Added
+
+- The Node binding passes a metric's verdict through as `MetricInput.verdict`.
+  `Metric::with_verdict` landed in `0.6.0` and was never wired up, so Node
+  callers still had only a tone — which is nothing in a pipe, in CI or under
+  `NO_COLOR`, where `Errors: 3` read exactly like a clean count. It is applied
+  before an explicit `tone`, which still wins, matching the Rust side.
+
+### Notes
+
+The Rust library is unchanged from `0.8.0`. This release exists so the npm
+package, which shares the crate's version, can carry the binding fix.
+
+
 ## [0.8.0] - 2026-09-20
 
 ### Added
