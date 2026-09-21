@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-21
+
+### Added
+
+- `Menu::run_multi` picks any number of entries: space ticks the one under the
+  cursor, enter confirms, and the result is `Picked::Chosen` with the ticked
+  ids in display order. Ticks are kept by id, so they survive the filter and
+  switching tabs. Hints are neither shown nor answered there, since a key that
+  ended the menu would drop what was ticked. `Menu::with_ticked` starts
+  named entries ticked.
+
+### Notes
+
+The Node binding is unchanged apart from its version; it does not expose menus.
+
+
 ## [0.8.1] - 2026-09-20
 
 ### Added

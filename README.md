@@ -177,6 +177,11 @@ run of groups into one tab where they would otherwise flood the row, and
 `Group::with_divider` marks where one kind of tab ends and another begins.
 `Menu::with_summary` adds a second heading line for what the menu adds up to.
 
+`Menu::run_multi` picks any number of entries instead of one: space ticks,
+enter confirms, and the result is `Picked::Chosen` with the ticked ids in
+display order. `Menu::with_ticked` starts entries ticked, for a list where the
+user should untick the exceptions rather than tick the rule.
+
 `Menu::render` needs no feature — it is plain formatting, and it is what a
 non-interactive caller shows. A menu larger than the terminal is fitted to it:
 taller lists scroll, with `↑ N more` / `↓ N more` marking what is out of view,

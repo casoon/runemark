@@ -1,10 +1,11 @@
 //! The interactive loop: draw, read a key, act, redraw.
 
+use std::collections::BTreeSet;
 use std::io::{self, Write};
 
 use super::terminal::{Key, RawTerminal, escape};
 
-use super::{Menu, Outcome, SelectMode, View, Viewport};
+use super::{Menu, Outcome, Picked, SelectMode, View, Viewport};
 use crate::color::Console;
 
 /// Hides the cursor for as long as this value lives.
@@ -59,27 +60,83 @@ impl Menu {
         mode: SelectMode,
         is_terminal: bool,
     ) -> io::Result<Outcome> {
+        Ok(
+            match self.session(console, mode, is_terminal, State::default())? {
+                None => Outcome::Unavailable,
+                Some(Ending::Finished(outcome)) => outcome,
+                // Only a state that ticks can confirm, and this one does not.
+                Some(Ending::Confirmed(_)) => Outcome::Cancelled,
+            },
+        )
+    }
+
+    /// Runs the menu to pick any number of entries, returning which.
+    ///
+    /// Space ticks the entry under the cursor and Enter confirms the lot, so
+    /// confirming with nothing ticked is an answer too — [`Picked::Chosen`]
+    /// with an empty list, which is not the same as cancelling.
+    ///
+    /// Entries named by [`Menu::with_ticked`] start ticked.
+    ///
+    /// Hints are neither shown nor answered: a key ending the menu would have
+    /// to drop what was ticked. Everything else — the filter, tabs, and when
+    /// the menu declines to run — is as in [`Menu::run`].
+    pub fn run_multi(
+        &self,
+        console: Console,
+        mode: SelectMode,
+        is_terminal: bool,
+    ) -> io::Result<Picked> {
+        let start = State {
+            checked: Some(self.ticked.clone()),
+            ..State::default()
+        };
+        Ok(match self.session(console, mode, is_terminal, start)? {
+            None => Picked::Unavailable,
+            Some(Ending::Confirmed(checked)) => Picked::Chosen(
+                self.items()
+                    .filter(|item| checked.contains(&item.id))
+                    .map(|item| item.id.clone())
+                    .collect(),
+            ),
+            // Hints are not answered here, so nothing but a cancel finishes.
+            Some(Ending::Finished(_)) => Picked::Cancelled,
+        })
+    }
+
+    /// Takes over the terminal for one run, or returns `None` where it cannot.
+    fn session(
+        &self,
+        console: Console,
+        mode: SelectMode,
+        is_terminal: bool,
+        start: State,
+    ) -> io::Result<Option<Ending>> {
         if !mode.is_interactive(is_terminal) || self.is_empty() {
-            return Ok(Outcome::Unavailable);
+            return Ok(None);
         }
 
         let Some(terminal) = RawTerminal::acquire()? else {
-            return Ok(Outcome::Unavailable);
+            return Ok(None);
         };
         let cursor = HiddenCursor::hide();
 
-        let outcome = self.event_loop(console, &terminal);
+        let ending = self.event_loop(console, &terminal, start);
 
         drop(cursor);
         drop(terminal);
 
         // Leave the final frame behind rather than a half-erased one.
         let _ = writeln!(io::stderr());
-        outcome
+        ending.map(Some)
     }
 
-    fn event_loop(&self, console: Console, terminal: &RawTerminal) -> io::Result<Outcome> {
-        let mut state = State::default();
+    fn event_loop(
+        &self,
+        console: Console,
+        terminal: &RawTerminal,
+        mut state: State,
+    ) -> io::Result<Ending> {
         let mut view = Scroll::default();
 
         loop {
@@ -89,7 +146,11 @@ impl Menu {
                 Action::Update(next) => state = next,
                 Action::Finish(outcome) => {
                     self.draw(console, terminal, &state, &mut view)?;
-                    return Ok(outcome);
+                    return Ok(Ending::Finished(outcome));
+                }
+                Action::Confirm => {
+                    self.draw(console, terminal, &state, &mut view)?;
+                    return Ok(Ending::Confirmed(state.checked.unwrap_or_default()));
                 }
                 Action::Ignore => {}
             }
@@ -116,6 +177,7 @@ impl Menu {
             } else {
                 state.index + 1
             })),
+            Key::Enter if state.checked.is_some() => Action::Confirm,
             Key::Enter => matches.get(state.index).map_or(Action::Ignore, |item| {
                 Action::Finish(Outcome::Selected(item.id.clone()))
             }),
@@ -142,6 +204,14 @@ impl Menu {
     }
 
     fn act_on_char(&self, pressed: char, state: &State) -> Action {
+        // Space ticks even inside a search, so a filtered list can be ticked
+        // without leaving it. No entry name is worth typing a space for.
+        if pressed == ' ' && state.checked.is_some() {
+            let matches = self.matching_items(state.view());
+            return matches.get(state.index).map_or(Action::Ignore, |item| {
+                Action::Update(state.toggled(&item.id))
+            });
+        }
         // Inside a search every printable key is part of the query, so a
         // script named "quality" can be typed without 'q' cancelling.
         if let Some(query) = &state.query {
@@ -158,10 +228,12 @@ impl Menu {
         if let Some(action) = self.act_on_digit(pressed, state) {
             return action;
         }
-        // Hint keys win over the built-in 'q', so a menu may bind 'q'.
+        // Hint keys win over the built-in 'q', so a menu may bind 'q'. Not
+        // while ticking: `run_multi` does not answer them.
         if let Some(hint) = self
             .hints
             .iter()
+            .filter(|_| state.checked.is_none())
             .find(|hint| hint.key.eq_ignore_ascii_case(&pressed))
         {
             return Action::Finish(Outcome::Hotkey(hint.key));
@@ -301,12 +373,16 @@ struct State {
     /// The tab being shown. Kept even while searching and while the menu has
     /// no tabs at all, so leaving the search returns to the group it left.
     tab: usize,
+    /// The ticked entries by id, `None` when picking one. Ids rather than
+    /// positions: a search reorders the list, and a tick has to survive it.
+    checked: Option<BTreeSet<String>>,
 }
 
 impl State {
     fn view(&self) -> View<'_> {
         View {
             query: self.query.as_deref(),
+            checked: self.checked.as_ref(),
             tab: Some(self.tab),
         }
     }
@@ -314,9 +390,18 @@ impl State {
     fn at(&self, index: usize) -> Self {
         Self {
             index,
-            query: self.query.clone(),
-            tab: self.tab,
+            ..self.clone()
         }
+    }
+
+    fn toggled(&self, id: &str) -> Self {
+        let mut next = self.clone();
+        if let Some(checked) = &mut next.checked {
+            if !checked.remove(id) {
+                checked.insert(id.to_owned());
+            }
+        }
+        next
     }
 
     /// Changing the query resets the cursor: the best match is now first, and
@@ -325,7 +410,7 @@ impl State {
         Self {
             index: 0,
             query: Some(query),
-            tab: self.tab,
+            ..self.clone()
         }
     }
 
@@ -334,15 +419,15 @@ impl State {
         Self {
             index: 0,
             query: None,
-            tab: self.tab,
+            ..self.clone()
         }
     }
 
     fn on_tab(&self, tab: usize) -> Self {
         Self {
             index: 0,
-            query: self.query.clone(),
             tab,
+            ..self.clone()
         }
     }
 }
@@ -351,7 +436,15 @@ impl State {
 enum Action {
     Update(State),
     Finish(Outcome),
+    /// Enter while ticking: the ticks are the answer.
+    Confirm,
     Ignore,
+}
+
+/// How a run ended.
+enum Ending {
+    Finished(Outcome),
+    Confirmed(BTreeSet<String>),
 }
 
 #[cfg(test)]
@@ -376,6 +469,7 @@ mod tests {
             Action::Update(next) => next,
             Action::Ignore => state.clone(),
             Action::Finish(outcome) => panic!("expected no outcome, got {outcome:?}"),
+            Action::Confirm => panic!("expected no outcome, got a confirmation"),
         }
     }
 
@@ -484,5 +578,54 @@ mod tests {
             menu.act_on(Key::Enter, &state),
             Action::Finish(Outcome::Selected("b1".into()))
         );
+    }
+
+    fn ticking() -> State {
+        State {
+            checked: Some(BTreeSet::new()),
+            ..State::default()
+        }
+    }
+
+    fn ticked(state: &State) -> Vec<&str> {
+        state.checked.iter().flatten().map(String::as_str).collect()
+    }
+
+    #[test]
+    fn space_ticks_and_unticks_the_entry_under_the_cursor() {
+        let menu = tabbed().with_layout(Layout::Flat);
+        let state = after(&menu, &ticking(), Key::Down);
+        let state = after(&menu, &state, Key::Char(' '));
+        assert_eq!(ticked(&state), ["b0"]);
+        let state = after(&menu, &state, Key::Char(' '));
+        assert!(ticked(&state).is_empty());
+    }
+
+    #[test]
+    fn enter_confirms_rather_than_selects_while_ticking() {
+        let menu = tabbed();
+        assert_eq!(menu.act_on(Key::Enter, &ticking()), Action::Confirm);
+    }
+
+    #[test]
+    fn a_tick_survives_a_search() {
+        // Ticked by id, so the filter reordering the list cannot move it.
+        let menu = tabbed().with_layout(Layout::Flat);
+        let state = after(&menu, &ticking(), Key::Char('/'));
+        let state = after(&menu, &state, Key::Char('b'));
+        let state = after(&menu, &state, Key::Char('2'));
+        let state = after(&menu, &state, Key::Char(' '));
+        assert_eq!(ticked(&state), ["b2"], "space ticks, not types");
+        let state = after(&menu, &state, Key::Escape);
+        assert_eq!(ticked(&state), ["b2"]);
+    }
+
+    #[test]
+    fn a_hint_is_not_answered_while_ticking() {
+        // Ending the menu on it would drop what was ticked.
+        let menu = tabbed()
+            .with_layout(Layout::Flat)
+            .add_hint(Hint::new('H', "Health"));
+        assert_eq!(menu.act_on(Key::Char('h'), &ticking()), Action::Ignore);
     }
 }

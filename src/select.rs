@@ -18,6 +18,7 @@
 //! feature Unix-only — on other platforms `Menu::run` reports
 //! [`Outcome::Unavailable`] and the caller renders the list instead.
 
+use std::collections::BTreeSet;
 use std::fmt;
 
 use unicode_width::UnicodeWidthStr;
@@ -181,6 +182,21 @@ pub enum Outcome {
     /// The caller decides what to show instead — often [`Menu::render`].
     Unavailable,
 }
+
+/// What the user did with a menu run by [`Menu::run_multi`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Picked {
+    /// Enter was pressed, carrying the [`Item::id`]s ticked at that moment,
+    /// in display order. Empty when nothing was ticked.
+    Chosen(Vec<String>),
+    /// Escape, `q`, or `Ctrl-C`.
+    Cancelled,
+    /// The menu did not run, because the mode or the stream ruled it out.
+    Unavailable,
+}
+
+/// Columns a tick box and its trailing space occupy.
+const CHECKBOX_WIDTH: usize = 4;
 
 /// Above this many entries, the filter is worth a line in the footer.
 const SEARCH_WORTH_MENTIONING: usize = 5;
@@ -396,6 +412,8 @@ fn subsequence_span(text: &str, query: &str) -> Option<usize> {
 #[derive(Debug, Clone, Copy, Default)]
 struct View<'a> {
     query: Option<&'a str>,
+    /// The ticked entries while picking several, `None` when picking one.
+    checked: Option<&'a BTreeSet<String>>,
     /// The active tab, or `None` for the flat listing. A non-interactive
     /// caller always passes `None`: it cannot switch tabs, so it is shown
     /// every group.
@@ -480,6 +498,8 @@ pub struct Menu {
     groups: Vec<Group>,
     hints: Vec<Hint>,
     layout: Layout,
+    /// Entries [`Menu::run_multi`] starts with ticked.
+    ticked: BTreeSet<String>,
 }
 
 impl Menu {
@@ -514,6 +534,20 @@ impl Menu {
 
     pub fn add_group(mut self, group: Group) -> Self {
         self.groups.push(group);
+        self
+    }
+
+    /// Entries [`Menu::run_multi`] starts with ticked, by [`Item::id`].
+    ///
+    /// For a list where most entries are the obvious answer and a few are
+    /// not: the user unticks the exceptions rather than ticking the rule. An
+    /// id no entry carries is never reported back.
+    pub fn with_ticked<I, S>(mut self, ids: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.ticked.extend(ids.into_iter().map(Into::into));
         self
     }
 
@@ -658,9 +692,14 @@ impl Menu {
     }
 
     /// The label column width, so descriptions line up across all groups.
-    fn label_width(&self) -> usize {
+    fn label_width(&self, view: View<'_>) -> usize {
+        let boxes = if view.checked.is_some() {
+            CHECKBOX_WIDTH
+        } else {
+            0
+        };
         self.items()
-            .map(|item| item.label.width())
+            .map(|item| item.label.width() + boxes)
             .max()
             .unwrap_or(0)
     }
@@ -798,7 +837,7 @@ impl Menu {
             self.write_tabs(writer, console, active, columns)?;
         }
 
-        let width = self.label_width().min(
+        let width = self.label_width(view).min(
             // A label column wider than the terminal leaves nothing for the
             // description and pushes it off screen entirely.
             columns.map_or(usize::MAX, |columns| columns.saturating_sub(MARKER_WIDTH)),
@@ -820,10 +859,22 @@ impl Menu {
                 Row::Item(item, index) => {
                     let selected = cursor == Some(*index);
                     let marker = if selected { "›" } else { " " };
-                    let label = shorten(&item.label, width);
-                    let padding = width.saturating_sub(label.width());
+                    let boxes = view.checked.map(|checked| checked.contains(&item.id));
+                    let room = width.saturating_sub(boxes.map_or(0, |_| CHECKBOX_WIDTH));
+                    let label = shorten(&item.label, room);
+                    let padding = room.saturating_sub(label.width());
 
                     write!(writer, "{marker} ")?;
+                    if let Some(ticked) = boxes {
+                        // The brackets carry it without colour; the tone only
+                        // helps a ticked entry stand out in a long list.
+                        if ticked {
+                            console.write_paint(Tone::Success, "[x]", writer)?;
+                        } else {
+                            console.write_paint(Tone::Muted, "[ ]", writer)?;
+                        }
+                        write!(writer, " ")?;
+                    }
                     console.write_paint(
                         if selected { Tone::Success } else { Tone::Info },
                         &label,
@@ -898,9 +949,19 @@ impl Menu {
     /// nothing else can advertise it. A key the menu answers to but never
     /// mentions is a key nobody presses.
     fn footer_keys(&self, view: View<'_>, cursor: Option<usize>) -> Vec<(String, &str)> {
-        let mut keys = Vec::with_capacity(self.hints.len() + 2);
+        let mut keys = Vec::with_capacity(self.hints.len() + 3);
         if self.active_tab(view).is_some() {
             keys.push(("\u{2190}\u{2192}".to_owned(), "group"));
+        }
+        if view.checked.is_some() {
+            // Hints are not offered here: a key that ends the menu would drop
+            // what was ticked, and `run_multi` has no outcome to report one.
+            keys.push(("space".to_owned(), "tick"));
+            keys.push(("enter".to_owned(), "confirm"));
+            if self.offers_search(cursor) {
+                keys.push(("/".to_owned(), "search"));
+            }
+            return keys;
         }
         if self.offers_search(cursor) {
             keys.push(("/".to_owned(), "search"));
@@ -992,6 +1053,15 @@ impl Menu {
     ) -> std::io::Result<Outcome> {
         Ok(Outcome::Unavailable)
     }
+
+    pub fn run_multi(
+        &self,
+        _console: Console,
+        _mode: SelectMode,
+        _is_terminal: bool,
+    ) -> std::io::Result<Picked> {
+        Ok(Picked::Unavailable)
+    }
 }
 
 #[cfg(test)]
@@ -1011,6 +1081,7 @@ mod tests {
     fn searching(query: &str) -> View<'_> {
         View {
             query: Some(query),
+            checked: None,
             tab: None,
         }
     }
@@ -1018,6 +1089,7 @@ mod tests {
     fn on_tab(tab: usize) -> View<'static> {
         View {
             query: None,
+            checked: None,
             tab: Some(tab),
         }
     }
@@ -1058,6 +1130,22 @@ mod tests {
             interactive.contains("U Updates"),
             "and the menu's own hints"
         );
+    }
+
+    #[test]
+    fn a_ticking_frame_draws_boxes_and_its_own_keys() {
+        let checked: BTreeSet<String> = ["build".to_owned()].into();
+        let view = View {
+            checked: Some(&checked),
+            ..View::default()
+        };
+        let shown = crate::internal::collect_to_string(|buf| {
+            menu().write_frame(buf, plain(), Some(0), None, view)
+        });
+        assert!(shown.contains("› [ ] dev "));
+        assert!(shown.contains("  [x] build"));
+        assert!(shown.contains("space tick   enter confirm"));
+        assert!(!shown.contains("U Updates"), "hints are not answered here");
     }
 
     #[test]

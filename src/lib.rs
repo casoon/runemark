@@ -27,5 +27,5 @@ pub use report::{
     Badge, Confidence, DetailLevel, Finding, FindingGroup, Metric, NextStep, RenderOptions, Report,
     ScopeNote, Trend, Vocabulary,
 };
-pub use select::{Group, Hint, Item, Layout, Menu, Outcome, SelectMode};
+pub use select::{Group, Hint, Item, Layout, Menu, Outcome, Picked, SelectMode};
 pub use verdict::Verdict;
