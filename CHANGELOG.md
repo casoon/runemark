@@ -1,9 +1,9 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
-
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-and this project adheres to [Semantic Versioning](https://semver.org/).
+All notable changes to runemark are listed here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and runemark follows
+[Semantic Versioning](https://semver.org/); below `1.0.0` a minor release may change
+existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
@@ -11,255 +11,246 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `Menu::run_multi` picks any number of entries: space ticks the one under the
-  cursor, enter confirms, and the result is `Picked::Chosen` with the ticked
-  ids in display order. Ticks are kept by id, so they survive the filter and
-  switching tabs. Hints are neither shown nor answered there, since a key that
-  ended the menu would drop what was ticked. `Menu::with_ticked` starts
-  named entries ticked.
-
-### Notes
-
-The Node binding is unchanged apart from its version; it does not expose menus.
-
+- **Select:** `Menu::run_multi` picks any number of entries — space ticks the one under
+  the cursor, enter confirms, and `Picked::Chosen` carries the ticked ids in display
+  order. Hints are neither shown nor answered there, since a key that ended the menu
+  would drop the ticks.
+- **Select:** `Menu::with_ticked` starts named entries ticked. Ticks are kept by id, so
+  they survive the filter and switching tabs.
 
 ## [0.8.1] - 2026-09-20
 
-### Added
+### Changed
 
-- The Node binding passes a metric's verdict through as `MetricInput.verdict`.
-  `Metric::with_verdict` landed in `0.6.0` and was never wired up, so Node
-  callers still had only a tone — which is nothing in a pipe, in CI or under
-  `NO_COLOR`, where `Errors: 3` read exactly like a clean count. It is applied
-  before an explicit `tone`, which still wins, matching the Rust side.
+- **Crate:** no library changes from `0.8.0`. The version exists so the npm package,
+  which shares the crate's version, can carry the Node fix below.
 
-### Notes
+### Fixed
 
-The Rust library is unchanged from `0.8.0`. This release exists so the npm
-package, which shares the crate's version, can carry the binding fix.
-
+- **Node:** a metric's verdict is passed through as `MetricInput.verdict`.
+  `Metric::with_verdict` landed in `0.6.0` and was never wired up, so Node callers had
+  only a tone, which is nothing in a pipe or under `NO_COLOR`. It is applied before an
+  explicit `tone`, which still wins. Details:
+  [Metrics as outcomes](https://casoon.github.io/runemark/docs/guides/reports/#metrics-as-outcomes).
 
 ## [0.8.0] - 2026-09-20
 
+### Breaking
+
+- **Select:** `Group` carries two more public fields, `tab` and `divider`, so a literal
+  construction of it no longer compiles. `Group::new` and the builders are unaffected.
+
 ### Added
 
-- `Group::in_tab` puts a run of groups in one tab rather than one each, and
-  `Group::with_divider` draws a divider in front of a tab where the row stops
-  being one kind of thing and starts being another. Inside a shared tab each
-  group keeps its label as a heading, so the grouping survives and only the
-  row gets its length back.
-
-  One tab per group stops working sooner than it looks. Measured on a real
-  workspace: 52 packages against 6 action groups is a row of 58 that is almost
-  entirely package names, permanently scrolling, with the digits worthless
-  past the ninth. Collapsed, it is seven tabs.
-
-### Changed
-
-- `Group` carries two more public fields, `tab` and `divider`, so a literal
-  construction of it no longer compiles. `Group::new` and the builders are
-  unaffected.
-
+- **Select:** `Group::in_tab` puts a run of groups in one tab rather than one each, and
+  `Group::with_divider` marks where the row stops being one kind of thing. Inside a
+  shared tab each group keeps its label as a heading, so only the row gets its length
+  back. Details:
+  [Groups that share a tab](https://casoon.github.io/runemark/docs/guides/selection/#groups-that-share-a-tab).
 
 ## [0.7.1] - 2026-09-20
 
 ### Fixed
 
-- `0.7.0` did not compile on Rust `1.85`, the version this crate declares.
-  The tab digits were matched with a `let` chain, which is stable only from
-  `1.88`; the local toolchain accepted it and the declared minimum was never
-  tried. The same key is now read without one, and a digit no tab carries is
-  swallowed rather than falling through to a hint bound to it.
-- The Node binding required `runemark ^0.6.0` while the crate beside it was
-  `0.7.0`, so every workflow that touches `bindings/node` failed to resolve.
-  Its package version was bumped for the release, its dependency on the crate
-  was not.
+- **Crate:** `0.7.0` did not compile on Rust `1.85`, the version this crate declares. The
+  tab digits were matched with a `let` chain, which is stable only from `1.88`; the local
+  toolchain accepted it and the declared minimum was never tried. The same key is now read
+  without one, and a digit no tab carries is swallowed rather than falling through to a
+  hint bound to it.
+- **Node:** the binding required `runemark ^0.6.0` while the crate beside it was `0.7.0`,
+  so every workflow that touches `bindings/node` failed to resolve. Its package version
+  was bumped for the release, its dependency on the crate was not.
 
 ## [0.7.0] - 2026-09-19
 
 ### Added
 
-- `Layout::Tabs` arranges a menu's groups as a row of tabs, showing only the
-  active group's entries. For a list that would otherwise be taller than the
-  terminal: `←` `→`, `Tab` / `Shift-Tab` and the digits `1`–`9` switch groups,
-  and the cursor lands on the first entry of the one it arrives at. A rule
-  under the active tab marks it, so the group is still named with colour off.
-  The application decides when to ask for it — a menu knows how many entries it
-  has, not how much of the screen its caller is willing to spend.
-- `Menu::with_summary` adds a second heading line, for what the menu adds up to
-  — how many entries, how many groups — which the list itself only says by
-  being counted.
+- **Select:** `Layout::Tabs` arranges a menu's groups as a row of tabs, showing only the
+  active group's entries, for a list that would otherwise be taller than the terminal.
+  `←` `→`, `Tab` / `Shift-Tab` and the digits `1`–`9` switch groups. The application
+  decides when to ask for the layout. Details:
+  [Groups as tabs](https://casoon.github.io/runemark/docs/guides/selection/#groups-as-tabs).
+- **Select:** `Menu::with_summary` adds a second heading line, for what the menu adds up
+  to — how many entries, how many groups — which the list itself only says by being
+  counted.
 
 ### Changed
 
-- `Menu::render` ignores `Layout::Tabs` and lists every group. Nothing on the
-  other end of a pipe can press a key to reach the second tab, so hiding one
-  there would lose entries rather than save lines.
-- The search spans every group in either layout, and leaves the tab row while
-  it runs. Tabs answer "I know roughly where"; the filter answers "I know
-  exactly what", which is the case tabs are worst at.
+- **Select:** `Menu::render` ignores `Layout::Tabs` and lists every group. Nothing on the
+  other end of a pipe can press a key to reach the second tab, so hiding one there would
+  lose entries rather than save lines.
+- **Select:** the search spans every group in either layout, and leaves the tab row while
+  it runs. Tabs answer "I know roughly where"; the filter answers "I know exactly what".
+  Details:
+  [Filtering](https://casoon.github.io/runemark/docs/guides/selection/#filtering).
 
 ## [0.6.0] - 2026-09-19
 
 ### Added
 
-- `Metric::with_verdict` renders the verdict's symbol in front of a metric, and
-  supplies its tone where none was set. A tone alone disappears with colour:
-  piped or under `NO_COLOR`, a failing metric read exactly like a passing one,
-  which made metrics unusable for status in the tools most likely to be piped.
-  An explicit `with_tone` still wins, in whichever order the two are called, and
-  the symbol counts towards the width that decides whether metrics stack.
+- **Reports:** `Metric::with_verdict` renders the verdict's symbol in front of a metric,
+  and supplies its tone where none was set. A tone alone disappears with colour: piped or
+  under `NO_COLOR`, a failing metric read exactly like a passing one. An explicit
+  `with_tone` still wins. Details:
+  [Metrics as outcomes](https://casoon.github.io/runemark/docs/guides/reports/#metrics-as-outcomes).
 
 ## [0.5.2] - 2026-09-19
 
 ### Fixed
 
-- A short menu no longer advertises `/ search` in its footer. Filtering still
-  works — the key is never taken away — but a two-entry yes/no question
-  offering to search itself reads as clutter, and below a handful of entries
-  every one of them is already on screen.
+- **Select:** a short menu no longer advertises `/ search` in its footer. Filtering still
+  works — the key is never taken away — but a two-entry yes/no question offering to search
+  itself reads as clutter, and below a handful of entries every one of them is already on
+  screen.
 
 ## [0.5.1] - 2026-09-19
 
 ### Fixed
 
-- An interactive menu now shows `/ search` in its footer. `/` is reserved for
-  the filter and cannot be bound as a hint, so nothing else could advertise it —
-  a key the menu answers to but never mentions is a key nobody presses.
-  `Menu::render` still offers no keys: printed to a pipe there is no keyboard.
+- **Select:** an interactive menu now shows `/ search` in its footer. `/` is reserved for
+  the filter and cannot be bound as a hint, so nothing else could advertise it — a key the
+  menu answers to but never mentions is a key nobody presses. `Menu::render` still offers
+  no keys: printed to a pipe there is no keyboard.
 
 ## [0.5.0] - 2026-09-19
 
 ### Added
 
-- `/` filters a menu as you type. Groups with nothing left disappear, the
-  cursor sits on the best match, and `Backspace` widens the query again.
-  Matching is tiered: the query as a substring of the name, then as a
-  subsequence of it (`dpl` finds `deploy`), then as a substring of the
-  description — a name the user is typing towards beats a description that
-  happens to share letters.
-- `Esc` leaves the filter before it leaves the menu, so a mistyped query costs
-  one key rather than the whole selection. While filtering, every printable key
-  is part of the query, so a menu binding `q` as a hint can still be searched
-  for `quality`.
-- `/` is reserved and can no longer be bound as a hint key.
+- **Select:** `/` filters a menu as you type. Groups with nothing left disappear, the
+  cursor sits on the best match, and `Backspace` widens the query again. Matching is
+  tiered: the name as a substring, then as a subsequence (`dpl` finds `deploy`), then the
+  description. Details:
+  [Filtering](https://casoon.github.io/runemark/docs/guides/selection/#filtering).
+- **Select:** `Esc` leaves the filter before it leaves the menu, so a mistyped query costs
+  one key rather than the whole selection. While filtering, every printable key is part of
+  the query, so a menu binding `q` as a hint can still be searched for `quality`.
 
-An empty query restores the menu as it was rather than ranking everything equal
-and sorting it alphabetically, which would undo the ordering the grouping
-exists to provide.
+### Changed
+
+- **Select:** `/` is reserved and can no longer be bound as a hint key.
 
 ## [0.4.2] - 2026-09-19
 
 ### Fixed
 
-- A menu entry longer than the terminal is wide wrapped to column zero, which
-  destroyed the two-column layout — a 78-character description behind a
-  19-column label column produced 101-column lines. Entries are now shortened
-  to fit, with `…` marking the cut. Wrapping is deliberately not used: it would
-  change how many lines the frame occupies, which the redraw depends on.
-- Where the label column leaves too little room for a description to say
+- **Select:** a menu entry longer than the terminal is wide wrapped to column zero, which
+  destroyed the two-column layout. Entries are now shortened to fit, with `…` marking the
+  cut; wrapping would change how many lines the frame occupies, which the redraw depends
+  on. Details:
+  [Terminals smaller than the menu](https://casoon.github.io/runemark/docs/guides/selection/#terminals-smaller-than-the-menu).
+- **Select:** where the label column leaves too little room for a description to say
   anything, the description is dropped rather than cut to a stub.
-
-`Menu::render` is unchanged and neither shortened nor windowed.
 
 ## [0.4.1] - 2026-09-18
 
 ### Fixed
 
-- A menu taller than the terminal corrupted the display. Redrawing moved the
-  cursor up by the full frame height, which a short terminal clamps, so each
-  frame ate the lines above it. The body is now windowed to what the terminal
-  can show, with `↑ N more` and `↓ N more` marking what is out of view, and the
-  window moves the least amount that keeps the cursor visible.
-- The redraw now moves up by the number of lines actually written rather than a
-  separately computed height, which is what let the two drift apart.
-
-`Menu::render` is unchanged and never windowed: a pipe or a file has no height
-to run out of.
+- **Select:** a menu taller than the terminal corrupted the display: the redraw moved up
+  by the full frame height, which a short terminal clamps, so each frame ate the lines
+  above. The body is now windowed, and `↑ N more` / `↓ N more` mark what is off screen.
+  Details:
+  [Terminals smaller than the menu](https://casoon.github.io/runemark/docs/guides/selection/#terminals-smaller-than-the-menu).
+- **Select:** the redraw now moves up by the number of lines actually written rather than
+  a separately computed height, which is what let the two drift apart.
 
 ## [0.4.0] - 2026-09-18
 
 ### Added
 
-- `select` feature: a grouped, keyboard-driven menu (`Menu`, `Group`, `Item`,
-  `Hint`, `Outcome`, `SelectMode`). This is the first API in the crate that
-  reads from the terminal; the documented design boundary is updated
-  accordingly. It drives termios directly, so the only dependency is `libc`
-  and the interactive path is Unix-only — elsewhere `Menu::run` reports
-  `Outcome::Unavailable`, which is the same fallback a pipeline takes.
-- `Menu::render` produces the same layout as plain text and needs no feature,
+- **Select:** the `select` feature adds a grouped, keyboard-driven menu (`Menu`, `Group`,
+  `Item`, `Hint`, `Outcome`, `SelectMode`) — the first API in the crate that reads from
+  the terminal. It drives termios directly, so the only dependency is `libc` and the
+  interactive path is Unix-only. Details:
+  [Selection](https://casoon.github.io/runemark/docs/guides/selection/).
+- **Select:** `Menu::render` produces the same layout as plain text and needs no feature,
   so a non-interactive caller has something to show.
-- `SelectMode` follows `ColorMode` and `ProgressMode`: `Auto` is interactive
-  only for a terminal, and a menu that cannot be interactive returns
-  `Outcome::Unavailable` without blocking on a read.
+- **Select:** `SelectMode` follows `ColorMode` and `ProgressMode`: `Auto` is interactive
+  only for a terminal, and a menu that cannot be interactive returns `Outcome::Unavailable`
+  without blocking on a read. Details:
+  [Without a terminal](https://casoon.github.io/runemark/docs/guides/selection/#without-a-terminal).
 
 ## [0.3.3] - 2026-09-14
 
-### Fixed
-
-- `TerminalProgress::stderr` no longer selects the `indicatif` bar where
-  `indicatif` hides its output (`TERM` unset or `dumb`); every notice was
-  silently dropped there. Such terminals now get plain lifecycle lines.
-
 ### Added
 
-- `TerminalProgress::is_interactive` reports whether a live progress bar is rendered.
+- **Progress:** `TerminalProgress::is_interactive` reports whether a live progress bar is
+  rendered.
+
+### Fixed
+
+- **Progress:** `TerminalProgress::stderr` no longer selects the `indicatif` bar where
+  `indicatif` hides its output (`TERM` unset or `dumb`); every notice was silently dropped
+  there. Such terminals now get plain lifecycle lines.
 
 ## [0.3.2] - 2026-09-14
 
-### Fixed
-
-- Narrow report layouts now wrap a finding's rule ID, confidence and location
-  onto continuation lines with the hanging indent instead of overflowing the
-  given width.
-- The interactive progress bar no longer flashes one frame in the default
-  `indicatif` style when an operation starts.
-
 ### Changed
 
-- Update the optional `indicatif` dependency to 0.18 (drops the unmaintained
-  `number_prefix` crate).
+- **Progress:** the optional `indicatif` dependency moves to 0.18, which drops the
+  unmaintained `number_prefix` crate.
+
+### Fixed
+
+- **Reports:** narrow layouts now wrap a finding's rule id, confidence and location onto
+  continuation lines with the hanging indent instead of overflowing the given width.
+- **Progress:** the interactive bar no longer flashes one frame in the default `indicatif`
+  style when an operation starts.
 
 ## [0.3.1] - 2026-09-12
 
 ### Added
 
-- Native Node.js bindings and the `@casoon/runemark` TypeScript package.
-- A versioned, object-oriented Node API that accepts plain data objects while
-  keeping Rust presentation models internal.
-- Full plain-text golden rendering tests and hardened terminal escape sanitization.
-- Multi-platform packaging and TypeScript contract test fixtures.
-
-### Fixed
-
-- The npm package now ships native binaries for all six supported platforms.
-  `@casoon/runemark@0.3.0` was an incomplete npm-only release that contained
-  only the macOS arm64 binary; there is no 0.3.0 crate release.
-
-## [0.2.0] - 2026-07-30
+- **Node:** native Node.js bindings and the `@casoon/runemark` TypeScript package, with a
+  versioned, object-oriented API that accepts plain data objects while keeping Rust
+  presentation models internal. Details:
+  [Node contract](https://casoon.github.io/runemark/docs/guides/node-contract/).
 
 ### Changed
 
-- Public presentation types are now non-exhaustive so Runemark can extend its
-  semantic vocabulary without a breaking release. This is a breaking change
-  for downstream exhaustive matches and struct literals.
-- Report internals are split into model and renderer modules while preserving
+- **Contributors:** plain-text golden rendering tests and TypeScript contract test
+  fixtures.
+
+### Fixed
+
+- **npm:** the package now ships native binaries for all six supported platforms.
+  `@casoon/runemark@0.3.0` was an incomplete npm-only release that contained only the
+  macOS arm64 binary; there is no 0.3.0 crate release. Details:
+  [Node platforms](https://casoon.github.io/runemark/docs/getting-started/installation/#node-platforms).
+
+### Security
+
+- **Console:** terminal escape sequences in application text are sanitised before they are
+  written. Details:
+  [Security](https://casoon.github.io/runemark/docs/guides/security/).
+
+## [0.2.0] - 2026-07-30
+
+### Breaking
+
+- **API:** public presentation types are now non-exhaustive, so runemark can extend its
+  semantic vocabulary without a breaking release. Downstream exhaustive matches and struct
+  literals no longer compile.
+
+### Changed
+
+- **Reports:** report internals are split into model and renderer modules while preserving
   the public `runemark::report` API.
 
 ### Fixed
 
-- Detailed reports now explicitly identify findings that were not provided in
+- **Reports:** detailed reports now explicitly identify findings that were not provided in
   the report data instead of implying a complete list.
 
 ## [0.1.1] - 2026-07-29
 
 ### Fixed
 
-- Report rendering now accepts trait-object writers without an intermediate buffer.
+- **Reports:** rendering now accepts trait-object writers without an intermediate buffer.
 
 ## [0.1.0] - 2026-07-29
 
 ### Added
 
-- Initial `Console`, `ColorMode`, and semantic `Tone` API.
-- TTY-aware color policy with `NO_COLOR` support.
+- **Console:** initial `Console`, `ColorMode` and semantic `Tone` API, with a TTY-aware
+  colour policy that honours `NO_COLOR`. Details:
+  [Colour policy](https://casoon.github.io/runemark/docs/guides/colour-policy/).
