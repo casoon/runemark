@@ -591,7 +591,7 @@ mod tests {
             metrics: Some(vec![JsMetric {
                 key: "Errors".into(),
                 value: "0".into(),
-                verdict: Some("pass".into()),
+                verdict: Some("passed".into()),
                 tone: Some("success".into()),
                 trend: Some("positive".into()),
                 delta: Some("-2".into()),

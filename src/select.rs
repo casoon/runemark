@@ -183,7 +183,7 @@ pub enum Outcome {
     Unavailable,
 }
 
-/// What the user did with a menu run by [`Menu::run_multi`].
+/// What the user did with a menu run by `Menu::run_multi` (`select` feature).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Picked {
     /// Enter was pressed, carrying the [`Item::id`]s ticked at that moment,
@@ -537,7 +537,7 @@ impl Menu {
         self
     }
 
-    /// Entries [`Menu::run_multi`] starts with ticked, by [`Item::id`].
+    /// Entries `Menu::run_multi` starts with ticked, by [`Item::id`].
     ///
     /// For a list where most entries are the obvious answer and a few are
     /// not: the user unticks the exceptions rather than ticking the rule. An

@@ -14,6 +14,10 @@ existing behaviour, and such entries are marked `Breaking`.
   `SECURITY.md` keeps the policy and links there for the escape and trust model.
   Details:
   [Node contract](https://casoon.github.io/runemark/docs/guides/node-contract/).
+- **Contributors:** `cargo doc` with default features and the Node binding's own
+  test suite pass again. A doc link to `Menu::run_multi`, which only exists with
+  the `select` feature, and a `"pass"` verdict literal where the contract says
+  `"passed"` had both been failing CI.
 
 ## [0.9.0] - 2026-09-21
 
