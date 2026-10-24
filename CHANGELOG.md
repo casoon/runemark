@@ -25,10 +25,14 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ### Fixed
 
-- **Site:** the project page stated version `0.3.1` while the crate was at `0.9.0`,
-  six minor releases out, because nothing tied the page to the manifests. The badges
-  read it from the theme now, and the theme derives it from the manifests, so there is
-  no copy left to fall behind.
+- **Docs:** the platform table no longer promises a macOS Intel binary. It has not
+  been built since `0.4.0`, so an Intel Mac could not install the npm package the
+  page said it could. Details:
+  [Node platforms](https://casoon.github.io/runemark/docs/getting-started/installation/#node-platforms).
+- **Site:** the start page states neither a version nor a platform count of its own.
+  It carried `0.3.1` while the crate was at `0.9.0`, then `npm 0.9.0`, which the
+  registry does not have, and six prebuilt Node platforms where five ship. The header
+  carries the version, and the facts row the number the release script owns.
 
 ## [0.9.0] - 2026-09-21
 
@@ -191,6 +195,12 @@ existing behaviour, and such entries are marked `Breaking`.
   only for a terminal, and a menu that cannot be interactive returns `Outcome::Unavailable`
   without blocking on a read. Details:
   [Without a terminal](https://casoon.github.io/runemark/docs/guides/selection/#without-a-terminal).
+
+### Removed
+
+- **npm:** the package no longer ships a macOS Intel binary (`darwin-x64`).
+  Five targets remain, and `packages/runemark/scripts/release-binaries.mjs` is
+  the list.
 
 ## [0.3.3] - 2026-09-14
 

@@ -82,9 +82,6 @@ boundaries:
    npm publish
    ```
 
-   `prepublishOnly` refuses to publish unless every release binary matches the
-   release checksums and the host binary passes the smoke test.
-
    `prepublishOnly` refuses to publish unless every binary the package ships
    matches the release checksums and the host binary passes the smoke test.
    Which binaries those are is `scripts/release-binaries.mjs`, not this list —
