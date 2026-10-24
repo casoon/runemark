@@ -440,6 +440,7 @@ struct Viewport {
 }
 
 impl Viewport {
+    #[cfg(any(all(feature = "select", unix), test))]
     pub(crate) const fn new(start: usize, height: usize) -> Self {
         Self {
             start,
@@ -448,6 +449,7 @@ impl Viewport {
         }
     }
 
+    #[cfg(any(all(feature = "select", unix), test))]
     pub(crate) const fn with_width(mut self, width: Option<usize>) -> Self {
         self.width = width;
         self
@@ -611,7 +613,7 @@ impl Menu {
     }
 
     /// How many tabs there are, for the interactive path's arithmetic.
-    #[cfg(any(all(feature = "select", unix), test))]
+    #[cfg(all(feature = "select", any(unix, test)))]
     fn tab_count(&self) -> usize {
         self.tabs().len()
     }
@@ -784,6 +786,7 @@ impl Menu {
     }
 
     /// The items a `query` matches, in the order they are drawn.
+    #[cfg(any(all(feature = "select", unix), test))]
     fn matching_items(&self, view: View<'_>) -> Vec<&Item> {
         self.body_rows(view)
             .into_iter()

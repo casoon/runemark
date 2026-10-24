@@ -1,0 +1,22 @@
+# The start page's hero: a progress run slow enough to watch, then the report
+# it ends in. Both come out of examples/hero_demo.rs, so what the recording
+# shows is the library's own output and not a mock-up of it.
+#
+# Rebuild with demo/record.sh. 64 columns, because the hero panel is half the
+# page on a desktop and the whole of it on a phone.
+version: 1
+
+terminal:
+  title: site audit
+  cols: 64
+  rows: 14
+  theme: catppuccin-mocha
+  prompt: "{green}${/} "
+
+defaults:
+  speed: 55
+
+steps:
+  - wait: 600
+  - exec: cargo run -q --features progress --example hero_demo
+    idle: 4000

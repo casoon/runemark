@@ -12,7 +12,8 @@ import {
   Terminal,
 } from '@casoon/pages-theme/components';
 import Base from '@casoon/pages-theme/layouts/Base.astro';
-import { ansi, hero } from '../showcase';
+import heroCast from '../../../assets/hero.svg';
+import { ansi } from '../showcase';
 
 const rust = `use runemark::{ColorMode, Console, Tone, Verdict};
 
@@ -52,7 +53,14 @@ process.stdout.write(renderReport({
       <Badge>Rust 1.85+</Badge>
       <Badge>Node 20+</Badge>
     </Badges>
-    <Terminal slot="output" title="site audit" dots ansi={hero} />
+    <img
+      slot="output"
+      class="hero-demo"
+      src={heroCast.src}
+      width={heroCast.width}
+      height={heroCast.height}
+      alt="A terminal running cargo run --example hero_demo: a progress bar fills as four pages are audited, then a site audit report appears with its metrics, two accessibility findings and a next step."
+    />
   </Hero>
 
   <Facts
@@ -104,3 +112,12 @@ process.stdout.write(renderReport({
     <CodeBlock code={node} lang="js" title="audit.cjs" label="Node" />
   </Quickstart>
 </Base>
+
+<style>
+  .hero-demo {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 10px;
+  }
+</style>

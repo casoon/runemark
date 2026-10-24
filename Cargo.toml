@@ -33,6 +33,10 @@ indicatif = { version = "0.18", optional = true }
 name = "select_demo"
 required-features = ["select"]
 
+[[example]]
+name = "hero_demo"
+required-features = ["progress"]
+
 
 [target.'cfg(unix)'.dependencies]
 libc = { version = "0.2", optional = true }

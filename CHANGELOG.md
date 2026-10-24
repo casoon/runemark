@@ -7,7 +7,18 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+### Added
+
+- **Contributors:** `examples/hero_demo.rs` paces a progress run so there is
+  something to record — every other example is over before a frame lands —
+  and `demo/record.sh` renders it to `assets/hero.svg` with castwright.
+
 ### Changed
+
+- **Site:** the hero shows a recording of that example, the progress bar
+  filling and then the report it ends in, instead of a still of the report
+  alone. An animated SVG with no script, which honours
+  `prefers-reduced-motion`.
 
 - **Docs:** the Node contract is documented in one place instead of two.
   `NODE_API.md` is gone and its content lives in the project documentation;
@@ -25,6 +36,10 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ### Fixed
 
+- **Select:** a plain `cargo build` no longer warns that `Viewport::new`,
+  `Viewport::with_width` and `matching_items` are never used. All three are
+  compiled only where the interactive path or a test reaches them; every gate
+  here asks for `--all-features`, so nothing caught it.
 - **Docs:** the platform table no longer promises a macOS Intel binary. It has not
   been built since `0.4.0`, so an Intel Mac could not install the npm package the
   page said it could. Details:
