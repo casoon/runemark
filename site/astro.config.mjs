@@ -13,7 +13,6 @@ export default defineConfig({
         'Consistent, human-readable terminal presentation for Rust and Node.js command-line tools.',
       tagline: 'Terminal output for Rust and Node CLIs',
       repo: 'casoon/runemark',
-      version: '0.9.0',
       license: 'MIT',
       packages: [
         { label: 'crates.io', href: 'https://crates.io/crates/runemark' },
