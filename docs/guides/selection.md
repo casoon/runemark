@@ -85,6 +85,69 @@ for the filter and cannot be bound. A tabbed menu has given its digits away: the
 groups, and a hint bound to one is not seen there — the tab is the one of the two the user
 can see on screen.
 
+## Picking several
+
+`Menu::run_multi` answers a different question: not "which one" but "which of these". Space
+ticks the entry under the cursor, `Enter` confirms the lot, and the result is a `Picked`
+rather than an `Outcome`:
+
+```rust
+# use runemark::{ColorMode, Console, Menu, Picked, SelectMode};
+# let menu = Menu::new();
+use std::io::IsTerminal;
+
+let picked = menu.run_multi(
+    Console::stderr(ColorMode::Auto),
+    SelectMode::Auto,
+    std::io::stderr().is_terminal(),
+)?;
+
+match picked {
+    Picked::Chosen(ids) => println!("{} chosen", ids.len()),
+    Picked::Cancelled => {}
+    Picked::Unavailable => print!("{}", menu.render(Console::stdout(ColorMode::Auto))),
+}
+# Ok::<(), std::io::Error>(())
+```
+
+```
+casoon.dev                                            pnpm
+  [ ] dev              Start the site
+› [x] build            Build for production
+  [x] test
+  [ ] deploy
+
+  space tick   enter confirm   / search
+```
+
+`Picked::Chosen` carries the ticked `Item::id`s in display order. **Confirming with nothing
+ticked is an answer, not a cancellation**: an empty list says the user looked and chose none,
+which is a different thing from `Picked::Cancelled` and usually deserves a different
+response.
+
+`Menu::with_ticked` starts named entries ticked, for a list where most entries are the
+obvious answer and a few are not — the user unticks the exceptions instead of ticking the
+rule. An id no entry carries is never reported back.
+
+```rust
+# use runemark::{Group, Item, Menu};
+let menu = Menu::new()
+    .add_group(
+        Group::new("Packages")
+            .add_item(Item::new("app", "app"))
+            .add_item(Item::new("site", "site")),
+    )
+    .with_ticked(["app", "site"]);
+```
+
+Ticks are held by id, not by position, so they survive everything that moves entries around:
+filtering, leaving the filter, and switching tabs. Space ticks inside a search too, which is
+what makes "filter to `test`, tick what is left" work.
+
+**Hints are neither shown nor answered here.** A key that ended the menu would have to throw
+away what was ticked, and `Picked` has no outcome to report one in. Everything else is as in
+[`Menu::run`](#running-it) — the filter, the tabs, and the decision not to run at all.
+
 ## Groups as tabs
 
 `Layout::Tabs` puts the groups in a row above the list and shows only the active one's

@@ -12,6 +12,7 @@ import {
   Terminal,
 } from '@casoon/pages-theme/components';
 import Base from '@casoon/pages-theme/layouts/Base.astro';
+import config from 'virtual:casoon-pages/config';
 import { ansi, hero } from '../showcase';
 
 const rust = `use runemark::{ColorMode, Console, Tone, Verdict};
@@ -47,8 +48,8 @@ process.stdout.write(renderReport({
     />
     <Badges>
       <Badge>MIT</Badge>
-      <Badge>crates.io 0.3.1</Badge>
-      <Badge>npm 0.3.1</Badge>
+      <Badge>crates.io {config.version}</Badge>
+      <Badge>npm {config.version}</Badge>
       <Badge>Rust 1.85+</Badge>
       <Badge>Node 20+</Badge>
     </Badges>

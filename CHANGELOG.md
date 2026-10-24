@@ -14,10 +14,20 @@ existing behaviour, and such entries are marked `Breaking`.
   `SECURITY.md` keeps the policy and links there for the escape and trust model.
   Details:
   [Node contract](https://casoon.github.io/runemark/docs/guides/node-contract/).
+- **Docs:** the selection guide covers picking several entries and the progress guide
+  covers `TerminalProgress::is_interactive`. Both shipped without a page to point at,
+  which is why their changelog entries carried the detail themselves. Details:
+  [Picking several](https://casoon.github.io/runemark/docs/guides/selection/#picking-several).
 - **Contributors:** `cargo doc` with default features and the Node binding's own
   test suite pass again. A doc link to `Menu::run_multi`, which only exists with
   the `select` feature, and a `"pass"` verdict literal where the contract says
   `"passed"` had both been failing CI.
+
+### Fixed
+
+- **Site:** the project page stated version `0.3.1` while the crate was at `0.9.0`, six
+  minor releases out. The badges now read the version the theme is configured with, and
+  `scripts/check-release-metadata.mjs` holds that one place to the manifests.
 
 ## [0.9.0] - 2026-09-21
 
@@ -25,8 +35,8 @@ existing behaviour, and such entries are marked `Breaking`.
 
 - **Select:** `Menu::run_multi` picks any number of entries — space ticks the one under
   the cursor, enter confirms, and `Picked::Chosen` carries the ticked ids in display
-  order. Hints are neither shown nor answered there, since a key that ended the menu
-  would drop the ticks.
+  order. Confirming with nothing ticked is an answer, not a cancellation. Details:
+  [Picking several](https://casoon.github.io/runemark/docs/guides/selection/#picking-several).
 - **Select:** `Menu::with_ticked` starts named entries ticked. Ticks are kept by id, so
   they survive the filter and switching tabs.
 
@@ -186,7 +196,8 @@ existing behaviour, and such entries are marked `Breaking`.
 ### Added
 
 - **Progress:** `TerminalProgress::is_interactive` reports whether a live progress bar is
-  rendered.
+  rendered. Details:
+  [Progress](https://casoon.github.io/runemark/docs/guides/progress/#rust).
 
 ### Fixed
 

@@ -34,6 +34,14 @@ line-oriented lifecycle when output is redirected, so stdout stays clean for mac
 results. Without the feature, `PlainProgress` and `SilentProgress` implement the same
 `ProgressSink` trait.
 
+`TerminalProgress::is_interactive` reports which of the two a sink ended up being. That is not
+derivable from `ProgressMode`: `Auto` resolves against the stream the caller passed **and**
+against `indicatif`'s own view of the terminal, which hides its output where `TERM` is unset
+or `dumb`. A caller that prints its own lines during a run needs the answer — a live bar owns
+the last line of the terminal, and writing into it corrupts the frame.
+
+The Node package has no equivalent; `createProgress` makes the same decision internally.
+
 ## Node
 
 ```js
