@@ -25,9 +25,10 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ### Fixed
 
-- **Site:** the project page stated version `0.3.1` while the crate was at `0.9.0`, six
-  minor releases out. The badges now read the version the theme is configured with, and
-  `scripts/check-release-metadata.mjs` holds that one place to the manifests.
+- **Site:** the project page stated version `0.3.1` while the crate was at `0.9.0`,
+  six minor releases out, because nothing tied the page to the manifests. The badges
+  read it from the theme now, and the theme derives it from the manifests, so there is
+  no copy left to fall behind.
 
 ## [0.9.0] - 2026-09-21
 

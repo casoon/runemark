@@ -27,17 +27,7 @@ const nodeDepMatch = nodeCargoToml.match(/^runemark\s*=\s*\{[^}]*?version\s*=\s*
 assert.ok(nodeDepMatch, 'bindings/node/Cargo.toml must depend on runemark with a version')
 const nodeDepVersion = nodeDepMatch[1]
 
-// 3. Read site/astro.config.mjs
-// The project page states the current version in its header badge and in its
-// JSON-LD. Nothing built it from the manifests, so it sat at 0.3.1 while the
-// crate reached 0.9.0 — six minor releases of a page telling visitors the
-// wrong thing.
-const siteConfig = fs.readFileSync(path.join(rootDir, 'site/astro.config.mjs'), 'utf8')
-const siteVersionMatch = siteConfig.match(/version:\s*'([^']+)'/)
-assert.ok(siteVersionMatch, 'site/astro.config.mjs must state a version')
-const siteVersion = siteVersionMatch[1]
-
-// 4. Read packages/runemark/package.json
+// 3. Read packages/runemark/package.json
 const pkgJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'packages/runemark/package.json'), 'utf8'))
 const pkgVersion = pkgJson.version
 
@@ -46,7 +36,6 @@ console.log(`  Root Cargo.toml:              ${rootVersion}`)
 console.log(`  bindings/node/Cargo.toml:     ${nodeVersion}`)
 console.log(`  bindings/node runemark dep:   ${nodeDepVersion}`)
 console.log(`  packages/runemark/package.json: ${pkgVersion}`)
-console.log(`  site/astro.config.mjs:         ${siteVersion}`)
 
 assert.equal(nodeVersion, rootVersion, 'bindings/node version must match root crate version')
 assert.equal(
@@ -55,9 +44,11 @@ assert.equal(
   "bindings/node's runemark dependency must match root crate version",
 )
 assert.equal(pkgVersion, rootVersion, 'packages/runemark version must match root crate version')
-assert.equal(siteVersion, rootVersion, 'site/astro.config.mjs version must match root crate version')
 
-// 5. Validate CHANGELOG.md vs git tags
+// The project page is not checked here. Since pages-theme 0.8.0 it derives the
+// version from these manifests itself, so there is no fourth copy to drift.
+
+// 4. Validate CHANGELOG.md vs git tags
 const changelog = fs.readFileSync(path.join(rootDir, 'CHANGELOG.md'), 'utf8')
 const releaseHeaderRegex = /^## \[(\d+\.\d+\.\d+)\] - (\d{4}-\d{2}-\d{2})/gm
 
