@@ -11,6 +11,7 @@ export default defineConfig({
       name: 'runemark',
       description:
         'Consistent, human-readable terminal presentation for Rust and Node.js command-line tools.',
+      tagline: 'Terminal output for Rust and Node CLIs',
       repo: 'casoon/runemark',
       version: '0.9.0',
       license: 'MIT',
