@@ -11,7 +11,9 @@ existing behaviour, and such entries are marked `Breaking`.
 
 - **Contributors:** `examples/hero_demo.rs` paces a progress run so there is
   something to record — every other example is over before a frame lands —
-  and `demo/record.sh` renders it to `assets/hero.svg` with castwright.
+  and `demo/record.sh` renders it to `assets/hero.svg` with castwright. Both
+  directories are excluded from the published crate, the way `site/` and
+  `docs/` already are.
 
 ### Changed
 
