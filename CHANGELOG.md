@@ -7,6 +7,14 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs:** the Node contract is documented in one place instead of two.
+  `NODE_API.md` is gone and its content lives in the project documentation;
+  `SECURITY.md` keeps the policy and links there for the escape and trust model.
+  Details:
+  [Node contract](https://casoon.github.io/runemark/docs/guides/node-contract/).
+
 ## [0.9.0] - 2026-09-21
 
 ### Added

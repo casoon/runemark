@@ -135,6 +135,6 @@ progress.finish(Verdict.Passed, 'Audit complete')
 The stable public API consists of `RunemarkConsole`, `RunemarkReport`,
 `RunemarkProgress`, and the `renderStatus`, `renderReport`, `renderError`,
 `renderDiff`, and `createProgress` helpers. TypeScript declarations are bundled
-with the package. See the repository's
-[Node API contract](https://github.com/casoon/runemark/blob/main/NODE_API.md)
+with the package. See the
+[Node contract](https://casoon.github.io/runemark/docs/guides/node-contract/)
 for the compatibility policy.

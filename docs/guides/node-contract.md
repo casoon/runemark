@@ -4,8 +4,8 @@ description: What the npm package guarantees, how the report schema is versioned
 order: 5
 ---
 
-`@casoon/runemark` is a native Node-API addon around the Rust renderer. Consumers work with plain
-objects and strings, never with Rust types or builders.
+`@casoon/runemark` is a native Node-API addon around the Rust renderer, built with napi-rs.
+Consumers work with plain objects and strings, never with Rust types or builders.
 
 ## Stable boundary
 
@@ -17,16 +17,21 @@ objects and strings, never with Rust types or builders.
 - The string literals in `index.d.ts` are the contract. The native binding validates tones,
   verdicts, locations and file actions, so invalid input fails at the package boundary instead of
   rendering a partial report.
+- Rust enums, public fields and builder internals are deliberately not exported.
 
 ## Report schema versions
 
 `ReportInput` carries `schemaVersion`. Version `1` is the only accepted shape. New optional fields
-may be added without a new schema version; renaming, changing the meaning of, or removing a field
-requires a new schema version and a new major package version.
+may be added without a new schema version — `MetricInput.verdict` arrived that way in 0.8.1.
+Renaming, changing the meaning of, or removing a field requires a new schema version and a new
+major package version.
 
 ## Compatibility
 
 - Node.js 20 or newer, Node-API 8.
 - The native binding builds with Rust 1.88; the `runemark` crate keeps Rust 1.85 as its minimum.
+- The package bundles one native binary per target listed in
+  `packages/runemark/scripts/release-binaries.mjs`; the loader picks the one for the current
+  platform. That script is the list, not this page.
 - The native loader is private: import only `@casoon/runemark`.
 - Output matches the Rust crate for the same input and options.

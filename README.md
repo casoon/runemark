@@ -235,7 +235,8 @@ cargo package --locked
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for API and contribution guidelines.
-See [NODE_API.md](NODE_API.md) for the stable Node.js package contract.
+See the [Node contract](https://casoon.github.io/runemark/docs/guides/node-contract/)
+for the stable Node.js package contract.
 The npm package includes its own README with [Node.js examples](packages/runemark/README.md).
 
 ## License
