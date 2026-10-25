@@ -3,7 +3,7 @@
 Opinionated, human-readable terminal presentation for Rust and Node.js
 command-line tools.
 
-Runemark gives related CLI tools one consistent way to communicate progress,
+runemark gives related CLI tools one consistent way to communicate progress,
 status, findings, and next steps. It owns presentation conventions—not command
 parsing, logging, domain models, or machine-readable report formats.
 
@@ -19,7 +19,7 @@ progress bar. That works until the tool needs consistent CI output, color
 policy, grouped findings, compact summaries, detailed mode, or actionable next
 steps.
 
-Runemark is the shared presentation layer for those concerns:
+runemark is the shared presentation layer for those concerns:
 
 - Semantic output: success, warning, error, info, muted text, and headings.
 - Predictable color policy: TTY-aware by default, `NO_COLOR` compliant, with
@@ -66,7 +66,7 @@ colorful local experience or `Never` for tests and plain logs.
 ## Reports
 
 Build reports from application-owned data and choose compact or detailed
-rendering in the host CLI. Runemark never defines domain-specific finding or
+rendering in the host CLI. runemark never defines domain-specific finding or
 machine-report types.
 
 ```rust
@@ -96,7 +96,7 @@ supplies the tone where none was set.
 
 ### Adaptive layout
 
-Applications can provide a known terminal width without giving Runemark access
+Applications can provide a known terminal width without giving runemark access
 to their terminal environment. Narrow layouts stack summary metrics and wrap
 finding messages with a hanging indent.
 
@@ -133,7 +133,7 @@ progress.finish(Verdict::Passed, "Audit complete");
 
 ### Selection
 
-The optional `select` feature adds a grouped menu. Runemark owns the layout, the
+The optional `select` feature adds a grouped menu. runemark owns the layout, the
 cursor and the key handling; the application owns what the entries are.
 
 It talks to the terminal directly — termios for raw mode, four escape sequences
@@ -190,7 +190,7 @@ pipe has no height or width to run out of.
 
 ## Design boundaries
 
-| Runemark owns | Applications own |
+| runemark owns | Applications own |
 | --- | --- |
 | Terminal color policy and semantic tones | CLI arguments and configuration |
 | Compact human-readable report layout | Domain finding types and business rules |
@@ -241,4 +241,4 @@ The npm package includes its own README with [Node.js examples](packages/runemar
 
 ## License
 
-Runemark is licensed under the MIT license ([LICENSE](LICENSE)).
+runemark is licensed under the MIT license ([LICENSE](LICENSE)).

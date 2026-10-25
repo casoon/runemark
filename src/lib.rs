@@ -1,6 +1,6 @@
 //! Opinionated, human-readable terminal presentation for Rust CLIs.
 //!
-//! Runemark owns semantic output conventions—status, emphasis, color policy,
+//! runemark owns semantic output conventions—status, emphasis, color policy,
 //! and structured decision-oriented reports—while delegating low-level terminal
 //! consistent terminal behavior.
 //!

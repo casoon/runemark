@@ -17,7 +17,7 @@ pub enum DetailLevel {
 
 /// Host-provided layout constraints for rendering a report.
 ///
-/// Runemark deliberately does not inspect the terminal size itself. Applications
+/// runemark deliberately does not inspect the terminal size itself. Applications
 /// can pass a known width for an interactive terminal or a deterministic width
 /// for tests and redirected output.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

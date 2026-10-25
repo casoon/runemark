@@ -1,6 +1,6 @@
 //! Native Node-API boundary for the curated `@casoon/runemark` package.
 //!
-//! The binding accepts plain Node data objects and keeps Runemark's Rust types
+//! The binding accepts plain Node data objects and keeps runemark's Rust types
 //! private. This lets each public DTO evolve additively without exposing Rust
 //! builders, traits, or enum representation details as a JavaScript contract.
 

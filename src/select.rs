@@ -1,6 +1,6 @@
 //! Interactive selection from a grouped list.
 //!
-//! This is the one place where Runemark reads from the terminal instead of only
+//! This is the one place where runemark reads from the terminal instead of only
 //! writing to it. Everything else in the crate hands back a string or writes to
 //! a writer the application owns; a menu cannot, because a cursor has to react
 //! to keys.

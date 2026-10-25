@@ -17,6 +17,10 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ### Changed
 
+- **Docs:** the project is written `runemark` everywhere, including at the start
+  of a sentence, the way the documentation and the project page already did.
+  README, CONTRIBUTING, the npm package's description and six doc comments had
+  it capitalised.
 - **Site:** the hero shows a recording of that example, the progress bar
   filling and then the report it ends in, instead of a still of the report
   alone. An animated SVG with no script, which honours

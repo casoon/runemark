@@ -1,4 +1,4 @@
-# Contributing to Runemark
+# Contributing to runemark
 
 ## Development setup
 
@@ -26,7 +26,7 @@ cargo package --locked
 
 ## API principles
 
-Runemark is a presentation library. Contributions should preserve these
+runemark is a presentation library. Contributions should preserve these
 boundaries:
 
 - Accept application-owned data; do not add audit, SEO, accessibility, or
@@ -89,6 +89,6 @@ boundaries:
 
 ## Reporting issues
 
-Include the Runemark version, Rust version, operating system, terminal, color
+Include the runemark version, Rust version, operating system, terminal, color
 mode, whether output was redirected, and a minimal reproduction. For rendering
 issues, include the plain output as well as the ANSI output when possible.

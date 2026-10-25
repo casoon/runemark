@@ -1,7 +1,7 @@
 # @casoon/runemark
 
 Native terminal presentation for Node.js command-line tools, powered by the
-Runemark Rust renderer. It provides consistent status messages, reports,
+runemark Rust renderer. It provides consistent status messages, reports,
 errors, file-change previews, and progress output without maintaining a second
 JavaScript renderer.
 

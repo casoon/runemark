@@ -54,7 +54,7 @@ pub enum SymbolTheme {
     Ascii,
 }
 
-/// Applies Runemark's color policy and semantic theme to one terminal stream.
+/// Applies runemark's color policy and semantic theme to one terminal stream.
 #[derive(Debug, Clone, Copy)]
 pub struct Console {
     color: bool,
@@ -125,7 +125,7 @@ impl Console {
         }
     }
 
-    /// Styles a value according to Runemark's semantic theme into a String.
+    /// Styles a value according to runemark's semantic theme into a String.
     pub fn paint(self, tone: Tone, value: impl Display) -> String {
         crate::internal::collect_to_string(|buf| self.write_paint(tone, &value, buf))
     }
