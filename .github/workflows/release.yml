@@ -116,6 +116,15 @@ jobs:
         uses: actions/attest-build-provenance@v3
         with:
           subject-path: packages/runemark/runemark.*.node
+      # native.cjs is the generated loader the npm package ships; it does not
+      # depend on the target, so one build's copy is enough for the publish job.
+      - name: Upload generated loader
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: loader
+          path: packages/runemark/native.cjs
+          if-no-files-found: error
       - name: Upload native artifact
         uses: actions/upload-artifact@v4
         with:
@@ -192,6 +201,11 @@ jobs:
       - name: Install dependencies
         working-directory: packages/runemark
         run: npm ci
+      - name: Download generated loader
+        uses: actions/download-artifact@v4
+        with:
+          name: loader
+          path: packages/runemark
       - name: Fetch release binaries
         working-directory: packages/runemark
         run: npm run fetch:binaries
