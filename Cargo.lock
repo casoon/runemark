@@ -124,7 +124,7 @@ dependencies = [
 
 [[package]]
 name = "runemark"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "indicatif",
  "libc",

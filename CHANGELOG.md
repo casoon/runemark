@@ -7,7 +7,15 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-26
+
 ### Added
+
+- **Releases:** the Release workflow publishes the npm package itself through
+  npm trusted publishing, after approval in the `npm` environment — no npm token
+  is stored anywhere and the package carries a provenance statement. The native
+  binaries carry signed build provenance attestations
+  (`gh attestation verify <file> --repo casoon/runemark`).
 
 - **Contributors:** `examples/hero_demo.rs` paces a progress run so there is
   something to record — every other example is over before a frame lands —
