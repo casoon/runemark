@@ -72,18 +72,13 @@ boundaries:
    native binaries, confirms the version is on crates.io, and attaches the
    binaries plus `SHA256SUMS` to the GitHub release. A tag pushed before
    publishing fails with that reason.
-5. Publish the npm package the same way:
-
-   ```bash
-   cd packages/runemark
-   npm ci
-   npm run build
-   npm run fetch:binaries
-   npm publish
-   ```
-
-   `prepublishOnly` refuses to publish unless every binary the package ships
-   matches the release checksums and the host binary passes the smoke test.
+5. The last job of the Release workflow publishes the npm package through npm
+   trusted publishing. It waits in the `npm` environment until you approve it in
+   the GitHub UI; no npm token exists anywhere, and the package gets a
+   provenance statement. It fetches the binaries from the release
+   (`npm run fetch:binaries`) and runs `npm publish`; `prepublishOnly` refuses
+   to publish unless every binary the package ships matches the release
+   checksums and the host binary passes the smoke test.
    Which binaries those are is `scripts/release-binaries.mjs`, not this list —
    it was six until x86_64 macOS was dropped.
 
