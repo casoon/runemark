@@ -9,6 +9,6 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 cargo build --quiet --features progress --example hero_demo
 # node-pty is what `exec:` runs the command through; castwright needs it present.
-npx -y -p @casoon/castwright@0.4.0 -p shiki -p node-pty castwright build \
+npx -y -p @casoon/castwright@0.5.0 -p shiki -p node-pty castwright build \
   "$root/demo/casts/hero.terminal.yaml" \
   -o "$root/assets" --format svg --loop-delay 6000 --allow-exec
