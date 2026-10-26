@@ -7,6 +7,8 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-26
+
 ### Added
 
 - **Releases:** the Release workflow publishes the npm package itself through
