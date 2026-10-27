@@ -12,11 +12,13 @@ import {
   Install,
   Quickstart,
   ReleaseHighlights,
+  Spotlight,
   Terminal,
 } from '@casoon/pages-theme/components';
 import Base from '@casoon/pages-theme/layouts/Base.astro';
 import config from 'virtual:casoon-pages/config';
 import { parseChangelog } from '@casoon/pages-theme/lib/changelog';
+import { url } from '@casoon/pages-theme/url';
 import heroCast from '../../../assets/hero.svg';
 import { ansi } from '../showcase';
 
@@ -104,6 +106,23 @@ process.stdout.write(renderReport({
       },
     ]}
   />
+
+  <Spotlight
+    eyebrow="How it renders"
+    title="One report, any width"
+    lead="**Reports adapt to the terminal they're given, not to a fixed layout.** Pass a known width and narrow terminals stack summary metrics and wrap finding messages with a hanging indent instead of truncating."
+    points={[
+      "**Verdict symbols survive NO_COLOR.** A tone disappears without color; the verdict's own symbol does not — a failing metric still reads as failing piped to a file.",
+      '**Compact or detailed, same data.** The host CLI chooses `detailLevel`; runemark never asks for two separate report shapes.',
+      '**Determinism by construction.** Identical input always walks the same path — no timing-dependent output, so fixtures can be committed and diffed.',
+    ]}
+    links={[
+      { label: 'Reports guide', href: url('docs/guides/reports/') },
+      { label: 'Colour policy', href: url('docs/guides/colour-policy/') },
+    ]}
+  >
+    <Terminal title="44 columns" dots ansi={ansi['report-narrow']} />
+  </Spotlight>
 
   <BuildOutput
     caption="Every terminal on this site is rendered by @casoon/runemark during the build – the same renderer as the crate. No screenshots."
