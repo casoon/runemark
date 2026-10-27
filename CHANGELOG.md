@@ -7,6 +7,11 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+### Changed
+
+- **Site:** the footer follows the page language instead of always showing German text, and the
+  start page now carries a release teaser and an FAQ (theme 0.11.0).
+
 ## [0.9.1] - 2026-10-26
 
 ### Added

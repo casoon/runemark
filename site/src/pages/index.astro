@@ -1,19 +1,31 @@
 ---
+import { readFile } from 'node:fs/promises';
 import {
   Badge,
   Badges,
   BuildOutput,
   CodeBlock,
   Facts,
+  Faq,
   Features,
   Hero,
   Install,
   Quickstart,
+  ReleaseHighlights,
   Terminal,
 } from '@casoon/pages-theme/components';
 import Base from '@casoon/pages-theme/layouts/Base.astro';
+import config from 'virtual:casoon-pages/config';
+import { parseChangelog } from '@casoon/pages-theme/lib/changelog';
 import heroCast from '../../../assets/hero.svg';
 import { ansi } from '../showcase';
+
+// Skip "Unreleased": it has no version to show as "New in v…" yet.
+const latestRelease = config.changelog
+  ? parseChangelog(await readFile(config.changelog, 'utf8')).find(
+      (r) => r.version.toLowerCase() !== 'unreleased'
+    )
+  : undefined;
 
 const rust = `use runemark::{ColorMode, Console, Tone, Verdict};
 
@@ -111,6 +123,29 @@ process.stdout.write(renderReport({
     <CodeBlock code={rust} lang="rust" title="main.rs" label="Rust" />
     <CodeBlock code={node} lang="js" title="audit.cjs" label="Node" />
   </Quickstart>
+
+  {latestRelease && <ReleaseHighlights release={latestRelease} />}
+
+  <Faq
+    items={[
+      {
+        q: 'Do the Rust crate and the Node package produce identical output?',
+        a: 'Yes. The npm package wraps the same Rust renderer through a native addon — there is one presentation layer, not a port kept in sync by hand.',
+      },
+      {
+        q: 'Does runemark work on Windows?',
+        a: 'Semantic output, color policy, reports and progress do. The optional select menu talks to the terminal directly through termios and is Unix-only — on Windows it reports Outcome::Unavailable and the caller falls back to render().',
+      },
+      {
+        q: 'What does output look like under NO_COLOR or when piped to a file?',
+        a: "Plain and deterministic. Tones disappear, but a verdict's own symbol stays, so a failing metric still reads as failing without color.",
+      },
+      {
+        q: 'Does runemark parse my CLI arguments or define my report data?',
+        a: 'No. It owns terminal presentation only — color policy, layout, semantic tones. Argument parsing, configuration, domain finding types and output formats like JSON or SARIF stay yours.',
+      },
+    ]}
+  />
 </Base>
 
 <style>
