@@ -12,6 +12,10 @@ parsing, logging, domain models, or machine-readable report formats.
 > Status: `0.3` is released on crates.io and npm. The API remains
 > intentionally small while it is validated in real CLI tools.
 
+<p align="center">
+  <img src="assets/hero.svg" alt="A terminal demo of a runemark program: a progress run for a site audit, followed by its report with errors, warnings, a score of 94/100, grouped findings and next steps." width="562">
+</p>
+
 ## What it provides
 
 Most command-line tools start with a mix of `println!`, ANSI snippets, and a
