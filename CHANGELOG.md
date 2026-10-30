@@ -14,6 +14,12 @@ existing behaviour, and such entries are marked `Breaking`.
 - **Site:** the footer follows the page language instead of always showing German text, and the
   start page now carries a release teaser and an FAQ (theme 0.11.0).
 
+### Fixed
+
+- **Docs:** the README no longer states a version of its own. It said `0.3` was
+  released while the crate and the npm package were at `0.9.1`, six minor
+  releases on, and nothing tied the sentence to the manifests.
+
 ## [0.9.1] - 2026-10-26
 
 ### Added

@@ -9,7 +9,7 @@ parsing, logging, domain models, or machine-readable report formats.
 
 **Website and documentation:** [casoon.github.io/runemark](https://casoon.github.io/runemark/)
 
-> Status: `0.3` is released on crates.io and npm. The API remains
+> Status: published on crates.io and npm, pre-1.0. The API remains
 > intentionally small while it is validated in real CLI tools.
 
 ## What it provides
