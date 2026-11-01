@@ -1,8 +1,11 @@
 ---
 /**
  * Teaser of one release's changes on the start page, from the same `Release` the changelog
- * route renders — parse CHANGELOG.md once with `parseChangelog` and pass `releases[0]`.
- * Never maintained twice: the entry text is the changelog entry.
+ * route renders — parse CHANGELOG.md once with `parseChangelog`. Pass the first release whose
+ * version isn't "Unreleased" (`releases.find((r) => r.version.toLowerCase() !== 'unreleased')`),
+ * not `releases[0]`: an `## [Unreleased]` section with entries already in it would otherwise
+ * show up here as "New in vUnreleased". Never maintained twice: the entry text is the
+ * changelog entry.
  */
 import config from 'virtual:casoon-pages/config';
 import type { Release } from '../lib/changelog';
@@ -103,5 +106,10 @@ const changes = release.changes.slice(0, max);
     border-radius: 5px;
     background: var(--code-bg);
     font-size: 0.9em;
+  }
+  li :global(a) {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
   }
 </style>
