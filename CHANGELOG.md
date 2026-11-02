@@ -9,7 +9,7 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ### Changed
 
-- **Pages:** the project site uses the current shared theme (0.12.5).
+- **Pages:** the project site uses the current shared theme (0.12.6).
 - **Site:** the start page gets a "How it renders" section on adaptive report width, next to the
   existing narrow-terminal example.
 - **Site:** the footer follows the page language instead of always showing German text, and the
