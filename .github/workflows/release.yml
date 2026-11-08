@@ -32,6 +32,7 @@ jobs:
   verify-metadata:
     name: Verify Release Metadata
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
         with:
@@ -45,6 +46,7 @@ jobs:
     name: Build Node binding (${{ matrix.target }})
     needs: verify-metadata
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
@@ -139,6 +141,7 @@ jobs:
     # pushed; this only checks that it actually was.
     needs: [verify-metadata, build-node-bindings]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Confirm the version is on crates.io
         run: |
@@ -158,6 +161,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs: confirm-published
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - name: Download native binaries
@@ -188,6 +192,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs: release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: npm
     permissions:
       contents: read
