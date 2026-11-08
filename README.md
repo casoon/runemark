@@ -217,6 +217,7 @@ Run the Rust examples directly from this repository:
 
 ```bash
 cargo run --example report_demo
+cargo run --example hero_demo --features progress
 cargo run --example progress_demo --features progress
 cargo run --example select_demo --features select
 ```

@@ -15,8 +15,9 @@ const { renderDiff, renderError, renderReport, renderStatus }: typeof import('@c
   createRequire(import.meta.url)('@casoon/runemark');
 
 // Every output on this site is rendered at build time by @casoon/runemark – the same Rust
-// renderer as the crate – and converted from ANSI to HTML for the page. The data mirrors
-// examples/report_demo.rs.
+// renderer as the crate – and converted from ANSI to HTML for the page. The report data is
+// modelled on examples/report_demo.rs; wording differs in places, and the file changes add a
+// rename.
 const colour = { color: 'always', isTerminal: true, symbols: 'unicode' } as const;
 
 // JSON with unquoted keys, so the input panel reads like the JavaScript a caller writes.
@@ -35,6 +36,7 @@ const audit: ReportInput = {
   schemaVersion: 1,
   title: 'Site audit v1.2.0',
   verdict: 'warning',
+  scopeNotes: [{ heading: 'Scope warnings', items: ['History partial', '1 file skipped'] }],
   metrics: [
     { key: 'Errors', value: '0' },
     { key: 'Warnings', value: '4', trend: 'negative', delta: '+2' },
@@ -49,7 +51,7 @@ const audit: ReportInput = {
           tone: 'warning',
           ruleId: 'a11y/img-alt',
           confidence: 'high',
-          badge: { label: 'quick win', tone: 'success' },
+          badge: { label: 'QUICK WIN', tone: 'success' },
           location: { kind: 'file', value: 'src/pages/index.astro', line: 42, column: 10 },
           remedy: 'Add an alt="…" description to the <img> tag.',
         },
@@ -93,15 +95,6 @@ const narrow: ReportInput = {
   ],
 };
 
-// Start page: the compact audit without badges and locations, so every line fits the panel.
-const heroReport: ReportInput = {
-  ...audit,
-  groups: audit.groups?.map((group) => ({
-    ...group,
-    findings: group.findings?.map(({ message, tone, ruleId }) => ({ message, tone, ruleId })),
-  })),
-};
-
 const missingToolchain: ErrorBlockInput = {
   heading: 'Required toolchain is unavailable',
   explanation: 'The configured version is not installed.',
@@ -120,9 +113,6 @@ const generated: DiffInput = {
 
 const report = (input: ReportInput, width: number) =>
   renderReport(input, { ...colour, width } satisfies RenderOptions);
-
-/** Compact report for the start page. */
-export const hero = report(heroReport, 58);
 
 /** Raw ANSI per example, for pages that show an output outside the showcase. */
 export const ansi = {

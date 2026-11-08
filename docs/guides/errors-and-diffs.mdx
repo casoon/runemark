@@ -49,7 +49,8 @@ process.stderr.write(renderError({
 ## File changes
 
 Generators and fixers can summarise what they wrote. Actions: added, modified, deleted, renamed;
-each change can carry a short delta such as a size.
+each change can carry a short delta such as a size. A change has a single path, so a rename shows
+the path it ended up at (`-> RENAME src/new.rs`), not an old-to-new pair.
 
 <Tabs
   label="Language"
