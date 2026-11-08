@@ -216,7 +216,7 @@ impl Menu {
         // script named "quality" can be typed without 'q' cancelling.
         if let Some(query) = &state.query {
             let mut query = query.clone();
-            query.push(pressed.to_ascii_lowercase());
+            query.extend(pressed.to_lowercase());
             return Action::Update(state.searching(query));
         }
 
@@ -557,6 +557,15 @@ mod tests {
         let state = after(&menu, &state, Key::Char('2'));
         assert_eq!(state.query.as_deref(), Some("2"));
         assert_eq!(state.tab, 0, "and the tab is untouched");
+    }
+
+    #[test]
+    fn an_uppercase_non_ascii_key_is_typed_lowercased() {
+        // The label is lowercased with Unicode rules, so the query has to be.
+        let menu = tabbed();
+        let state = after(&menu, &State::default(), Key::Char('/'));
+        let state = after(&menu, &state, Key::Char('Ü'));
+        assert_eq!(state.query.as_deref(), Some("ü"));
     }
 
     #[test]

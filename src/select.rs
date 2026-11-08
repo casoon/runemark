@@ -372,7 +372,7 @@ impl Score {
 /// not match.
 fn score(item: &Item, query: &str) -> Option<Score> {
     let label = item.label.to_lowercase();
-    if let Some(at) = label.find(query) {
+    if let Some(at) = char_position(&label, query) {
         return Some(Score(
             Score::LABEL_SUBSTRING + u32::try_from(at).unwrap_or(u32::MAX),
         ));
@@ -384,10 +384,17 @@ fn score(item: &Item, query: &str) -> Option<Score> {
         ));
     }
     let description = item.description.as_ref()?.to_lowercase();
-    let at = description.find(query)?;
+    let at = char_position(&description, query)?;
     Some(Score(
         Score::DESCRIPTION + u32::try_from(at).unwrap_or(u32::MAX),
     ))
+}
+
+/// Where `query` first occurs in `text`, counted in characters rather than
+/// bytes, so a label with accents does not rank as if its match were further
+/// along than it is.
+fn char_position(text: &str, query: &str) -> Option<usize> {
+    text.find(query).map(|at| text[..at].chars().count())
 }
 
 /// The span `query` occupies in `text` as a subsequence, if it occurs at all.
@@ -395,7 +402,7 @@ fn score(item: &Item, query: &str) -> Option<Score> {
 /// The span is what separates a tight match from a lucky one: `dl` spans two
 /// characters in `dl-report` and fourteen in `deploy:landings`.
 fn subsequence_span(text: &str, query: &str) -> Option<usize> {
-    let mut chars = text.char_indices();
+    let mut chars = text.chars().enumerate();
     let mut first = None;
     let mut last = 0;
 
@@ -1501,6 +1508,36 @@ mod tests {
     fn a_description_match_is_found_when_no_name_matches() {
         let hits = searched(&script_menu(), "lint");
         assert_eq!(hits, ["check"]);
+    }
+
+    fn labelled(labels: &[&str]) -> Menu {
+        let mut group = Group::new("G");
+        for label in labels {
+            group = group.add_item(Item::new(*label, *label));
+        }
+        Menu::new().add_group(group)
+    }
+
+    #[test]
+    fn a_non_ascii_query_finds_a_non_ascii_label() {
+        let menu = labelled(&["Über uns", "Kontakt"]);
+        assert_eq!(searched(&menu, "über"), ["Über uns"]);
+    }
+
+    #[test]
+    fn a_substring_match_is_ranked_by_characters_not_bytes() {
+        // "x" sits at character 2 of the first label and character 3 of the
+        // second, but at byte 4 against byte 3.
+        let menu = labelled(&["abcx", "üüx"]);
+        assert_eq!(searched(&menu, "x"), ["üüx", "abcx"]);
+    }
+
+    #[test]
+    fn a_subsequence_span_is_measured_in_characters_not_bytes() {
+        // "xy" spans four characters in the first label and five in the second,
+        // but six bytes against five.
+        let menu = labelled(&["xabcy", "xüüy"]);
+        assert_eq!(searched(&menu, "xy"), ["xüüy", "xabcy"]);
     }
 
     #[test]
