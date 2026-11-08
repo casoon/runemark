@@ -1,8 +1,9 @@
 //! Opinionated, human-readable terminal presentation for Rust CLIs.
 //!
 //! runemark owns semantic output conventions—status, emphasis, color policy,
-//! and structured decision-oriented reports—while delegating low-level terminal
-//! consistent terminal behavior.
+//! and structured decision-oriented reports—so related tools behave consistently
+//! in the terminal. Layout inputs such as the terminal width come from the host
+//! application.
 //!
 //! It deliberately does not parse command-line arguments, own application logging,
 //! or define domain-specific report schemas.

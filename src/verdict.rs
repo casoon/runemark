@@ -70,7 +70,9 @@ impl Verdict {
         }
     }
 
-    /// Writes a verdict line formatted with symbol, optional label, and message directly to a writer.
+    /// Writes a verdict line, the symbol followed by the message, directly to a writer.
+    ///
+    /// The text from [`Verdict::label`] is not part of the line.
     pub fn write_to(
         self,
         console: Console,
@@ -82,7 +84,9 @@ impl Verdict {
         write!(writer, " {}", sanitize_visible_text(message))
     }
 
-    /// Renders a verdict line formatted with symbol, optional label, and message as a String.
+    /// Renders a verdict line, the symbol followed by the message, as a String.
+    ///
+    /// The text from [`Verdict::label`] is not part of the line.
     pub fn render(self, console: Console, message: &str) -> String {
         crate::internal::collect_to_string(|buf| self.write_to(console, message, buf))
     }

@@ -204,10 +204,9 @@ pipe has no height or width to run out of.
 
 ## Roadmap
 
-The initial API is deliberately narrow. Future additions are driven by real
-consumer needs rather than speculative abstractions:
-
-1. Validate the current API in real CLI tools before expanding it.
+The API is deliberately narrow, and additions are driven by real consumer needs
+rather than speculative abstractions. Planned work and known gaps are tracked as
+[open issues](https://github.com/casoon/runemark/issues).
 
 ## Examples
 
