@@ -9,7 +9,9 @@ documentation = "https://docs.rs/runemark"
 repository = "https://github.com/casoon/runemark"
 keywords = ["cli", "terminal", "reporting", "progress", "output"]
 categories = ["command-line-interface", "command-line-utilities"]
-exclude = ["todo.md", "assets/**", "bindings/**", "demo/**", "packages/**", "plan/**", "scripts/**", "site/**", "docs/**"]
+exclude = ["assets/**", "bindings/**", "demo/**", "examples/node/**", "packages/**", "plan/**", "scripts/**", "site/**",
+    "docs/index.md", "docs/reference/**", "docs/getting-started/installation.mdx",
+    "docs/guides/node-contract.md", "docs/guides/security.md", "docs/guides/selection.md"]
 
 # Without this, docs.rs builds default features only and the `progress` and
 # `select` APIs never appear in the published documentation.

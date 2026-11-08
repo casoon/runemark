@@ -1,0 +1,68 @@
+{
+  "function": "renderReport",
+  "input": {
+    "schemaVersion": 1,
+    "title": "Security & Quality Audit",
+    "verdict": "warning",
+    "metrics": [
+      {
+        "key": "Issues",
+        "value": "2",
+        "tone": "warning"
+      },
+      {
+        "key": "Coverage",
+        "value": "88%",
+        "tone": "success",
+        "trend": "positive",
+        "delta": "+3%"
+      }
+    ],
+    "groups": [
+      {
+        "title": "Vulnerabilities",
+        "findings": [
+          {
+            "message": "SQL injection vulnerability",
+            "tone": "error",
+            "ruleId": "security/sql-injection",
+            "location": {
+              "kind": "file",
+              "value": "src/db.rs",
+              "line": 42
+            },
+            "confidence": "high",
+            "badge": {
+              "label": "critical",
+              "tone": "error"
+            }
+          },
+          {
+            "message": "Hardcoded secret",
+            "tone": "warning",
+            "ruleId": "security/secret-leak",
+            "location": {
+              "kind": "file",
+              "value": "src/auth.rs",
+              "line": 10,
+              "column": 5
+            }
+          }
+        ]
+      }
+    ],
+    "nextSteps": [
+      {
+        "text": "Fix critical vulnerabilities",
+        "command": "cargo audit fix"
+      }
+    ]
+  },
+  "options": {
+    "color": "always",
+    "symbols": "unicode",
+    "isTerminal": true,
+    "hyperlinks": false
+  },
+  "expected": "\u001b[1;93m⚠\u001b[0m Security & Quality Audit\n\n  \u001b[2mIssues: \u001b[0m\u001b[1;93m2\u001b[0m   \u001b[2mCoverage: \u001b[0m\u001b[1;92m88%\u001b[0m \u001b[1;92m(+3%)\u001b[0m\n\n● \u001b[1;96mVulnerabilities\u001b[0m \u001b[2m(2)\u001b[0m\n  - \u001b[1;91m[critical]\u001b[0m \u001b[1;91mSQL injection vulnerability\u001b[0m \u001b[2m[security/sql-injection]\u001b[0m \u001b[2m(high confidence)\u001b[0m at \u001b[2msrc/db.rs:42\u001b[0m\n  - \u001b[1;93mHardcoded secret\u001b[0m \u001b[2m[security/secret-leak]\u001b[0m at \u001b[2msrc/auth.rs:10:5\u001b[0m\n\n\u001b[1;96mNext steps:\u001b[0m\n  • Fix critical vulnerabilities\n    \u001b[36m$ cargo audit fix\u001b[0m\n"
+}

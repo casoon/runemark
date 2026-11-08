@@ -32,6 +32,7 @@ jobs:
   verify-metadata:
     name: Verify Release Metadata
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
         with:
@@ -45,6 +46,7 @@ jobs:
     name: Build Node binding (${{ matrix.target }})
     needs: verify-metadata
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
@@ -139,6 +141,7 @@ jobs:
     # pushed; this only checks that it actually was.
     needs: [verify-metadata, build-node-bindings]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Confirm the version is on crates.io
         run: |
@@ -158,7 +161,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs: confirm-published
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v5
       - name: Download native binaries
         uses: actions/download-artifact@v4
         with:
@@ -169,7 +174,8 @@ jobs:
         working-directory: dist
         run: |
           ls -la
-          test "$(ls runemark.*.node | wc -l)" -eq 5
+          expected="$(node -p "require('../packages/runemark/package.json').napi.targets.length")"
+          test "$(ls runemark.*.node | wc -l)" -eq "$expected"
           sha256sum runemark.*.node > SHA256SUMS
           cat SHA256SUMS
       - name: Create GitHub release
@@ -186,6 +192,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     needs: release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: npm
     permissions:
       contents: read
@@ -197,7 +204,7 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       # Trusted publishing needs npm 11.5 or newer.
-      - run: npm install -g npm@latest
+      - run: npm install -g npm@11
       - name: Install dependencies
         working-directory: packages/runemark
         run: npm ci
@@ -214,3 +221,6 @@ jobs:
       - name: Publish
         working-directory: packages/runemark
         run: npm publish --access public
+        env:
+          # prepublishOnly checks the build provenance attestations with `gh`.
+          GH_TOKEN: ${{ github.token }}

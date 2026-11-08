@@ -1,6 +1,7 @@
 //! Diff and file generation preview components.
 
 use crate::color::{Console, SymbolTheme, Tone, sanitize_visible_text};
+use std::io::Write;
 use std::path::PathBuf;
 
 /// The action taken on a file by a scaffolder, generator, or auto-fixer.
@@ -18,6 +19,7 @@ pub enum FileAction {
 }
 
 impl FileAction {
+    /// Returns the marker shown in front of the label: `+`, `~`, `-`, or `→` (`->` in ASCII).
     pub fn symbol(self, theme: SymbolTheme) -> &'static str {
         match (self, theme) {
             (Self::Added, _) => "+",
@@ -28,6 +30,7 @@ impl FileAction {
         }
     }
 
+    /// Returns the semantic tone of this action.
     pub fn tone(self) -> Tone {
         match self {
             Self::Added => Tone::Success,
@@ -37,6 +40,7 @@ impl FileAction {
         }
     }
 
+    /// Returns the upper-case label shown for this action (`CREATE`, `UPDATE`, `DELETE`, `RENAME`).
     pub fn label(self) -> &'static str {
         match self {
             Self::Added => "CREATE",
@@ -51,8 +55,11 @@ impl FileAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct FileChange {
+    /// The affected file. A rename carries this single path; there is no old-to-new pair.
     pub path: PathBuf,
+    /// What happened to the file.
     pub action: FileAction,
+    /// Optional short size or line delta, shown in parentheses.
     pub delta: Option<String>,
 }
 
@@ -77,6 +84,7 @@ impl FileChange {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct DiffBlock {
+    /// The file changes, rendered one per line in insertion order.
     pub changes: Vec<FileChange>,
 }
 
@@ -92,23 +100,37 @@ impl DiffBlock {
         self
     }
 
-    /// Renders the diff block.
-    pub fn render(&self, console: Console) -> String {
-        let mut out = String::new();
+    /// Writes the diff block directly to a writer, one line per change.
+    pub fn write_to(
+        &self,
+        console: Console,
+        writer: &mut (impl Write + ?Sized),
+    ) -> std::io::Result<()> {
         for c in &self.changes {
-            let sym = console.paint(c.action.tone(), c.action.symbol(console.symbol_theme()));
-            let label = console.paint(c.action.tone(), c.action.label());
-            let path_str = c.path.display().to_string();
-            let safe_path = sanitize_visible_text(&path_str);
-            let delta_str = c
-                .delta
-                .as_deref()
-                .map(|d| console.paint(Tone::Muted, format!(" ({d})")))
-                .unwrap_or_default();
-
-            out.push_str(&format!("  {sym} {label:<6} {safe_path}{delta_str}\n"));
+            write!(writer, "  ")?;
+            console.write_paint(
+                c.action.tone(),
+                c.action.symbol(console.symbol_theme()),
+                writer,
+            )?;
+            write!(writer, " ")?;
+            console.write_paint(c.action.tone(), c.action.label(), writer)?;
+            write!(
+                writer,
+                " {}",
+                sanitize_visible_text(&c.path.display().to_string())
+            )?;
+            if let Some(d) = c.delta.as_deref() {
+                console.write_paint(Tone::Muted, format!(" ({d})"), writer)?;
+            }
+            writeln!(writer)?;
         }
-        out
+        Ok(())
+    }
+
+    /// Renders the diff block as a String.
+    pub fn render(&self, console: Console) -> String {
+        crate::internal::collect_to_string(|buf| self.write_to(console, buf))
     }
 }
 

@@ -1,0 +1,67 @@
+{
+  "function": "renderReport",
+  "input": {
+    "schemaVersion": 1,
+    "title": "Security & Quality Audit",
+    "verdict": "warning",
+    "metrics": [
+      {
+        "key": "Issues",
+        "value": "2",
+        "tone": "warning"
+      },
+      {
+        "key": "Coverage",
+        "value": "88%",
+        "tone": "success",
+        "trend": "positive",
+        "delta": "+3%"
+      }
+    ],
+    "groups": [
+      {
+        "title": "Vulnerabilities",
+        "findings": [
+          {
+            "message": "SQL injection vulnerability",
+            "tone": "error",
+            "ruleId": "security/sql-injection",
+            "location": {
+              "kind": "file",
+              "value": "src/db.rs",
+              "line": 42
+            },
+            "confidence": "high",
+            "badge": {
+              "label": "critical",
+              "tone": "error"
+            }
+          },
+          {
+            "message": "Hardcoded secret",
+            "tone": "warning",
+            "ruleId": "security/secret-leak",
+            "location": {
+              "kind": "file",
+              "value": "src/auth.rs",
+              "line": 10,
+              "column": 5
+            }
+          }
+        ]
+      }
+    ],
+    "nextSteps": [
+      {
+        "text": "Fix critical vulnerabilities",
+        "command": "cargo audit fix"
+      }
+    ]
+  },
+  "options": {
+    "color": "never",
+    "symbols": "unicode",
+    "isTerminal": false
+  },
+  "expected": "⚠ Security & Quality Audit\n\n  Issues: 2   Coverage: 88% (+3%)\n\n● Vulnerabilities (2)\n  - [critical] SQL injection vulnerability [security/sql-injection] (high confidence) at src/db.rs:42\n  - Hardcoded secret [security/secret-leak] at src/auth.rs:10:5\n\nNext steps:\n  • Fix critical vulnerabilities\n    $ cargo audit fix\n"
+}

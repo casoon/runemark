@@ -74,14 +74,14 @@ rendering in the host CLI. runemark never defines domain-specific finding or
 machine-report types.
 
 ```rust
-use runemark::{Finding, FindingGroup, Report, Tone, Verdict};
+use runemark::{ColorMode, Console, Finding, FindingGroup, Report, Tone, Verdict};
 
 let report = Report::new("Site audit", Verdict::Warning).add_group(
     FindingGroup::new("Accessibility")
         .add_finding(Finding::new(Tone::Warning, "Image has no text alternative")),
 );
 
-print!("{}", report.render(runemark::Console::stdout(runemark::ColorMode::Auto)));
+print!("{}", report.render(Console::stdout(ColorMode::Auto)));
 ```
 
 ### Metrics as outcomes
@@ -107,7 +107,7 @@ finding messages with a hanging indent.
 ```rust
 use runemark::{ColorMode, Console, RenderOptions, Report, Verdict};
 
-# let report = Report::new("Site audit", Verdict::Info);
+let report = Report::new("Site audit", Verdict::Info);
 
 let output = report.render_with_options(
     Console::stdout(ColorMode::Auto),
@@ -117,9 +117,10 @@ let output = report.render_with_options(
 
 ### Progress
 
-The optional `progress` feature adds an `indicatif`-backed terminal progress
-sink. `Auto` uses a compact, line-oriented lifecycle when output is redirected,
-so machine-readable stdout remains clean.
+`TerminalProgress` is always available; the optional `progress` feature adds an
+`indicatif`-backed live bar to it. `Auto` draws the bar only on an interactive
+terminal and otherwise (or without the feature) uses a compact, line-oriented
+lifecycle, so machine-readable stdout remains clean.
 
 ```rust
 use runemark::{ColorMode, Console, ProgressMode, ProgressSink, TerminalProgress, Verdict};
@@ -149,26 +150,28 @@ fallback a pipeline takes, so callers need no `cfg`.
 use runemark::{ColorMode, Console, Group, Hint, Item, Menu, Outcome, SelectMode};
 use std::io::IsTerminal;
 
-let menu = Menu::new()
-    .with_heading("casoon.dev")
-    .with_note("pnpm")
-    .add_group(
-        Group::new("Development")
-            .add_item(Item::new("dev", "dev").with_description("Start the site")),
-    )
-    .add_hint(Hint::new('U', "Updates"));
+fn main() -> std::io::Result<()> {
+    let menu = Menu::new()
+        .with_heading("casoon.dev")
+        .with_note("pnpm")
+        .add_group(
+            Group::new("Development")
+                .add_item(Item::new("dev", "dev").with_description("Start the site")),
+        )
+        .add_hint(Hint::new('U', "Updates"));
 
-let outcome = menu.run(
-    Console::stderr(ColorMode::Auto),
-    SelectMode::Auto,
-    std::io::stderr().is_terminal(),
-)?;
+    let outcome = menu.run(
+        Console::stderr(ColorMode::Auto),
+        SelectMode::Auto,
+        std::io::stderr().is_terminal(),
+    )?;
 
-// Without a terminal the menu does not run and never blocks; render it instead.
-if outcome == Outcome::Unavailable {
-    print!("{}", menu.render(Console::stdout(ColorMode::Auto)));
+    // Without a terminal the menu does not run and never blocks; render it instead.
+    if outcome == Outcome::Unavailable {
+        print!("{}", menu.render(Console::stdout(ColorMode::Auto)));
+    }
+    Ok(())
 }
-# Ok::<(), std::io::Error>(())
 ```
 
 `/` filters the menu as you type, ranking names above descriptions and tight
@@ -204,10 +207,9 @@ pipe has no height or width to run out of.
 
 ## Roadmap
 
-The initial API is deliberately narrow. Future additions are driven by real
-consumer needs rather than speculative abstractions:
-
-1. Validate the current API in real CLI tools before expanding it.
+The API is deliberately narrow, and additions are driven by real consumer needs
+rather than speculative abstractions. Planned work and known gaps are tracked as
+[open issues](https://github.com/casoon/runemark/issues).
 
 ## Examples
 
@@ -215,14 +217,17 @@ Run the Rust examples directly from this repository:
 
 ```bash
 cargo run --example report_demo
+cargo run --example hero_demo --features progress
 cargo run --example progress_demo --features progress
 cargo run --example select_demo --features select
 ```
 
-Node.js examples are in [examples/node](examples/node). Build the local native
-package once, then run an example:
+Node.js examples are in [examples/node](examples/node). Install the build
+tooling and build the local native package once (needs Rust 1.88 or newer; the
+build generates the gitignored `native.cjs` loader), then run an example:
 
 ```bash
+npm --prefix packages/runemark ci
 npm --prefix packages/runemark run build
 node examples/node/report.cjs
 ```

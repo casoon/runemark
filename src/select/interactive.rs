@@ -31,6 +31,10 @@ impl Drop for HiddenCursor {
     }
 }
 
+/// How many entries `PageUp` and `PageDown` move. A fixed step: deciding a
+/// key needs no terminal, and the viewport follows the cursor wherever it lands.
+const PAGE: usize = 10;
+
 impl Menu {
     /// Runs the menu, returning what the user did.
     ///
@@ -52,8 +56,12 @@ impl Menu {
     ///
     /// A signal that kills the process outright — `SIGTERM`, `SIGHUP` — leaves
     /// the terminal in raw mode, because no destructor runs. This crate
-    /// installs no signal handlers; an application that needs to survive that
-    /// must install its own.
+    /// handles none of those; an application that needs to survive that must
+    /// install its own.
+    ///
+    /// While the menu runs, `SIGWINCH` has a handler of this crate's so a
+    /// resize redraws at once. It calls the handler that was installed before
+    /// it, and puts that one back when the menu ends, on every path out.
     pub fn run(
         &self,
         console: Console,
@@ -138,18 +146,19 @@ impl Menu {
         mut state: State,
     ) -> io::Result<Ending> {
         let mut view = Scroll::default();
+        let mut stderr = io::stderr();
 
         loop {
-            self.draw(console, terminal, &state, &mut view)?;
+            self.draw(console, terminal.size(), &mut stderr, &state, &mut view)?;
 
             match self.act_on(terminal.read_key()?, &state) {
                 Action::Update(next) => state = next,
                 Action::Finish(outcome) => {
-                    self.draw(console, terminal, &state, &mut view)?;
+                    self.draw(console, terminal.size(), &mut stderr, &state, &mut view)?;
                     return Ok(Ending::Finished(outcome));
                 }
                 Action::Confirm => {
-                    self.draw(console, terminal, &state, &mut view)?;
+                    self.draw(console, terminal.size(), &mut stderr, &state, &mut view)?;
                     return Ok(Ending::Confirmed(state.checked.unwrap_or_default()));
                 }
                 Action::Ignore => {}
@@ -177,6 +186,12 @@ impl Menu {
             } else {
                 state.index + 1
             })),
+            // Jumps stop at the ends instead of wrapping: arriving at the end
+            // is the point of them, and wrapping a page would undo it.
+            Key::Home => Action::Update(state.at(0)),
+            Key::End => Action::Update(state.at(last)),
+            Key::PageUp => Action::Update(state.at(state.index.saturating_sub(PAGE))),
+            Key::PageDown => Action::Update(state.at((state.index + PAGE).min(last))),
             Key::Enter if state.checked.is_some() => Action::Confirm,
             Key::Enter => matches.get(state.index).map_or(Action::Ignore, |item| {
                 Action::Finish(Outcome::Selected(item.id.clone()))
@@ -199,7 +214,8 @@ impl Menu {
                 None => Action::Ignore,
             },
             Key::Char(pressed) => self.act_on_char(pressed, state),
-            Key::Other => Action::Ignore,
+            // The loop redraws after every key, which is all a resize needs.
+            Key::Other | Key::Resize => Action::Ignore,
         }
     }
 
@@ -216,7 +232,7 @@ impl Menu {
         // script named "quality" can be typed without 'q' cancelling.
         if let Some(query) = &state.query {
             let mut query = query.clone();
-            query.push(pressed.to_ascii_lowercase());
+            query.extend(pressed.to_lowercase());
             return Action::Update(state.searching(query));
         }
 
@@ -279,14 +295,19 @@ impl Menu {
     }
 
     /// Draws the menu in place, overwriting the previous frame.
+    ///
+    /// `size` is the terminal's lines and columns, if it reports them. Taking
+    /// it and the writer rather than the terminal is what lets the redraw's
+    /// bookkeeping be asserted without one.
     fn draw(
         &self,
         console: Console,
-        terminal: &RawTerminal,
+        size: Option<(usize, usize)>,
+        out: &mut impl Write,
         state: &State,
         view: &mut Scroll,
     ) -> io::Result<()> {
-        let viewport = view.advance(self, terminal, state);
+        let viewport = view.advance(self, size, state);
 
         // Raw mode drops the implicit carriage return on newline, so the frame
         // is rendered normally and then given explicit ones.
@@ -295,19 +316,13 @@ impl Menu {
         });
         let lines: Vec<&str> = frame.lines().collect();
 
-        let mut stderr = io::stderr();
         if let Some(previous) = view.drawn {
-            write!(
-                stderr,
-                "{}{}",
-                escape::move_up(previous),
-                escape::CLEAR_TO_END
-            )?;
+            write!(out, "{}{}", escape::move_up(previous), escape::CLEAR_TO_END)?;
         }
         for line in &lines {
-            write!(stderr, "{line}\r\n")?;
+            write!(out, "{line}\r\n")?;
         }
-        stderr.flush()?;
+        out.flush()?;
 
         // Counting what was actually written is what keeps the redraw exact.
         // Deriving the height a second time invites the two to disagree, which
@@ -330,16 +345,25 @@ impl Scroll {
     /// Only moving when the cursor would leave the window keeps the list still
     /// under the cursor; recentring on every keypress makes short moves feel
     /// like the whole screen is sliding.
-    fn advance(&mut self, menu: &Menu, terminal: &RawTerminal, state: &State) -> Option<Viewport> {
+    fn advance(
+        &mut self,
+        menu: &Menu,
+        size: Option<(usize, usize)>,
+        state: &State,
+    ) -> Option<Viewport> {
         // A terminal that reports no size gets the whole menu, as before.
-        let (height, columns) = terminal.size()?;
+        let (height, columns) = size?;
         let columns = (columns > 0).then_some(columns);
         let view = state.view();
         let rows = menu.body_height(view);
         // One line stays free so the frame does not push its own top off screen.
-        let body = height.saturating_sub(menu.chrome_height(view, columns) + 1);
+        // A terminal shorter than the chrome still gets one row: the cursor has
+        // to be somewhere, and the viewport keeps it in sight.
+        let body = height
+            .saturating_sub(menu.chrome_height(view, columns) + 1)
+            .max(1);
 
-        if body == 0 || rows == 0 || rows <= body {
+        if rows <= body {
             self.start = 0;
             // Still bound the width: a short list can carry long descriptions.
             return Some(Viewport::new(0, rows.max(1)).with_width(columns));
@@ -450,6 +474,7 @@ enum Ending {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ColorMode;
     use crate::select::{Group, Hint, Item, Layout};
 
     fn tabbed() -> Menu {
@@ -471,6 +496,369 @@ mod tests {
             Action::Finish(outcome) => panic!("expected no outcome, got {outcome:?}"),
             Action::Confirm => panic!("expected no outcome, got a confirmation"),
         }
+    }
+
+    #[test]
+    fn a_terminal_shorter_than_the_chrome_still_gets_one_row() {
+        // The whole list would not fit, and neither would the frame: with no
+        // body left the menu draws the row under the cursor, not everything.
+        let mut menu = Menu::new().with_heading("many");
+        let mut group = Group::new("Scripts");
+        for n in 0..40 {
+            group = group.add_item(Item::new(format!("t{n}"), format!("t{n}")));
+        }
+        menu = menu.add_group(group);
+
+        let state = State::default().at(20);
+        let size = Some((menu.chrome_height(state.view(), Some(40)), 40));
+        let viewport = Scroll::default()
+            .advance(&menu, size, &state)
+            .expect("a size was given");
+        let rows = menu.body_height(state.view());
+        let cursor = menu.row_of_item(20, state.view());
+        assert!(viewport.shows(rows, cursor), "the cursor stays in sight");
+        assert_eq!(viewport.window(rows).len(), 1, "and only one row is drawn");
+    }
+
+    /// A flat menu of `items` entries under a heading.
+    fn scripts(items: usize) -> Menu {
+        let mut group = Group::new("Scripts");
+        for n in 0..items {
+            group = group.add_item(Item::new(format!("t{n}"), format!("t{n}")));
+        }
+        Menu::new().with_heading("many").add_group(group)
+    }
+
+    /// A terminal `columns` wide with `body` lines to spare for entries.
+    fn terminal_for(
+        menu: &Menu,
+        state: &State,
+        columns: usize,
+        body: usize,
+    ) -> Option<(usize, usize)> {
+        let chrome = menu.chrome_height(state.view(), Some(columns));
+        // One line stays free, as `advance` leaves it.
+        Some((chrome + 1 + body, columns))
+    }
+
+    #[test]
+    fn a_terminal_that_reports_no_size_gets_the_whole_menu() {
+        let menu = scripts(40);
+        assert_eq!(
+            Scroll::default().advance(&menu, None, &State::default()),
+            None
+        );
+    }
+
+    #[test]
+    fn a_menu_that_fits_is_not_scrolled() {
+        let menu = scripts(5);
+        let state = State::default();
+        let size = terminal_for(&menu, &state, 40, 6);
+        let mut scroll = Scroll::default();
+        let viewport = scroll.advance(&menu, size, &state).unwrap();
+        assert_eq!(viewport.window(menu.body_height(state.view())), 0..6);
+        assert_eq!(scroll.start, 0);
+    }
+
+    #[test]
+    fn the_width_bounds_a_menu_that_fits_too() {
+        // A short list can still carry descriptions wider than the terminal.
+        let menu = scripts(2);
+        let state = State::default();
+        let mut scroll = Scroll::default();
+        let size = Some((50, 33));
+        assert_eq!(scroll.advance(&menu, size, &state).unwrap().width, Some(33));
+        // A terminal that reports no columns bounds nothing.
+        let size = Some((50, 0));
+        assert_eq!(scroll.advance(&menu, size, &state).unwrap().width, None);
+    }
+
+    #[test]
+    fn the_cursor_is_in_view_at_every_position_going_down_and_back_up() {
+        // The bug this pins: stepping to the last entry left the cursor one
+        // row below the window, because the scroll maths and the window maths
+        // disagreed about how many lines the indicators cost.
+        let menu = scripts(40);
+        for body in [1, 2, 3, 4, 6, 11, 21, 29] {
+            let mut scroll = Scroll::default();
+            let positions = (0..menu.len()).chain((0..menu.len()).rev());
+            for index in positions {
+                let state = State::default().at(index);
+                let size = terminal_for(&menu, &state, 40, body);
+                let viewport = scroll.advance(&menu, size, &state).unwrap();
+                let rows = menu.body_height(state.view());
+                let cursor = menu.row_of_item(index, state.view());
+                assert!(
+                    viewport.shows(rows, cursor),
+                    "body {body}, item {index} (row {cursor}) not visible from {}",
+                    scroll.start
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_window_holds_still_while_the_cursor_moves_inside_it() {
+        // Recentring on every key makes short moves feel like the whole screen
+        // is sliding.
+        let menu = scripts(40);
+        let mut scroll = Scroll::default();
+        let mut advance_to = |index: usize| {
+            let state = State::default().at(index);
+            let size = terminal_for(&menu, &state, 40, 10);
+            scroll.advance(&menu, size, &state).unwrap();
+            scroll.start
+        };
+
+        assert_eq!(advance_to(0), 0);
+        assert_eq!(advance_to(5), 0, "still inside the first window");
+        let scrolled = advance_to(30);
+        assert!(scrolled > 0, "the cursor left the window, so it moved");
+        assert_eq!(advance_to(29), scrolled, "one step back stays inside it");
+    }
+
+    #[test]
+    fn the_first_frame_overwrites_nothing() {
+        let menu = scripts(3);
+        let mut scroll = Scroll::default();
+        let mut out = Vec::new();
+        menu.draw(plain(), None, &mut out, &State::default(), &mut scroll)
+            .unwrap();
+        let shown = String::from_utf8(out).unwrap();
+
+        assert!(
+            !shown.contains('\x1b'),
+            "nothing to move up over: {shown:?}"
+        );
+        // Raw mode drops the implicit carriage return, so every line brings one.
+        assert_eq!(shown.matches('\n').count(), shown.matches("\r\n").count());
+        assert_eq!(usize::from(scroll.drawn.unwrap()), shown.lines().count());
+    }
+
+    #[test]
+    fn a_redraw_moves_up_over_exactly_the_lines_it_drew() {
+        let menu = scripts(3);
+        let mut scroll = Scroll::default();
+        let state = State::default();
+
+        let mut first = Vec::new();
+        menu.draw(plain(), None, &mut first, &state, &mut scroll)
+            .unwrap();
+        let drawn = scroll.drawn.unwrap();
+
+        let mut second = Vec::new();
+        menu.draw(plain(), None, &mut second, &state.at(1), &mut scroll)
+            .unwrap();
+        let second = String::from_utf8(second).unwrap();
+        let moved = format!("{}{}", escape::move_up(drawn), escape::CLEAR_TO_END);
+        assert!(second.starts_with(&moved), "{second:?}");
+    }
+
+    #[test]
+    fn a_frame_that_changes_height_is_counted_afresh() {
+        // Searching adds the query line and drops the footer, so the frame is
+        // a different height. The next redraw must move up by the new count.
+        let menu = scripts(3);
+        let mut scroll = Scroll::default();
+        let browsing = State::default();
+        let searching = browsing.searching(String::new());
+
+        menu.draw(plain(), None, &mut Vec::new(), &browsing, &mut scroll)
+            .unwrap();
+        let before = scroll.drawn.unwrap();
+
+        let mut out = Vec::new();
+        menu.draw(plain(), None, &mut out, &searching, &mut scroll)
+            .unwrap();
+        let after = scroll.drawn.unwrap();
+        let shown = String::from_utf8(out).unwrap();
+        assert!(shown.starts_with(&escape::move_up(before)));
+        let frame = shown.split(escape::CLEAR_TO_END).nth(1).unwrap();
+        assert_eq!(usize::from(after), frame.lines().count());
+
+        let mut out = Vec::new();
+        menu.draw(plain(), None, &mut out, &browsing, &mut scroll)
+            .unwrap();
+        let shown = String::from_utf8(out).unwrap();
+        assert!(shown.starts_with(&escape::move_up(after)), "{shown:?}");
+    }
+
+    #[test]
+    fn a_scrolled_frame_is_no_taller_than_the_terminal_it_was_sized_for() {
+        let menu = scripts(40);
+        for body in [1, 2, 3, 5, 10] {
+            let state = State::default().at(20);
+            let size = terminal_for(&menu, &state, 40, body);
+            let mut scroll = Scroll::default();
+            menu.draw(plain(), size, &mut Vec::new(), &state, &mut scroll)
+                .unwrap();
+            let height = size.unwrap().0;
+            assert!(
+                usize::from(scroll.drawn.unwrap()) < height,
+                "body {body}: drew {:?} lines for {height}",
+                scroll.drawn
+            );
+        }
+    }
+
+    fn plain() -> Console {
+        Console::new(ColorMode::Never, false)
+    }
+
+    fn flat_menu() -> Menu {
+        tabbed().with_layout(Layout::Flat)
+    }
+
+    #[test]
+    fn up_and_down_wrap_at_both_ends() {
+        let menu = flat_menu();
+        let last = menu.len() - 1;
+        assert_eq!(after(&menu, &State::default(), Key::Up).index, last);
+        assert_eq!(after(&menu, &State::default().at(last), Key::Down).index, 0);
+        assert_eq!(after(&menu, &State::default().at(2), Key::Up).index, 1);
+        assert_eq!(after(&menu, &State::default().at(2), Key::Down).index, 3);
+    }
+
+    #[test]
+    fn home_and_end_jump_to_the_first_and_last_entry() {
+        let menu = scripts(30);
+        let middle = State::default().at(12);
+        assert_eq!(after(&menu, &middle, Key::Home).index, 0);
+        assert_eq!(after(&menu, &middle, Key::End).index, 29);
+    }
+
+    #[test]
+    fn the_page_keys_move_a_page_and_stop_at_the_ends() {
+        let menu = scripts(30);
+        let state = State::default().at(12);
+        assert_eq!(after(&menu, &state, Key::PageDown).index, 12 + PAGE);
+        assert_eq!(after(&menu, &state, Key::PageUp).index, 12 - PAGE);
+        // No wrapping: a page past the end is the end.
+        assert_eq!(after(&menu, &state.at(25), Key::PageDown).index, 29);
+        assert_eq!(after(&menu, &state.at(3), Key::PageUp).index, 0);
+        assert_eq!(after(&menu, &state.at(29), Key::PageDown).index, 29);
+        assert_eq!(after(&menu, &state.at(0), Key::PageUp).index, 0);
+    }
+
+    #[test]
+    fn the_jump_keys_work_on_the_active_tab_and_inside_a_search() {
+        let menu = tabbed();
+        let on_second = after(&menu, &State::default(), Key::Right);
+        assert_eq!(after(&menu, &on_second, Key::End).index, 1, "two to a tab");
+
+        let menu = scripts(30);
+        let state = State::default().searching("t2".into());
+        let matches = menu.matching_items(state.view()).len();
+        assert_eq!(after(&menu, &state, Key::End).index, matches - 1);
+    }
+
+    #[test]
+    fn the_jump_keys_over_no_matches_stay_put() {
+        let menu = scripts(30);
+        let nothing = State::default().searching("zzzz".into());
+        for key in [Key::Home, Key::End, Key::PageUp, Key::PageDown] {
+            assert_eq!(after(&menu, &nothing, key).index, 0);
+        }
+    }
+
+    #[test]
+    fn up_and_down_over_no_matches_stay_put() {
+        let menu = flat_menu();
+        let nothing = State::default().searching("zzzz".into());
+        assert_eq!(after(&menu, &nothing, Key::Up).index, 0);
+        assert_eq!(after(&menu, &nothing, Key::Down).index, 0);
+    }
+
+    #[test]
+    fn backspace_shortens_the_query_and_leaves_the_search_when_it_is_empty() {
+        let menu = flat_menu();
+        let state = State::default().searching("ab".into());
+        let state = after(&menu, &state, Key::Backspace);
+        assert_eq!(state.query.as_deref(), Some("a"));
+        let state = after(&menu, &state, Key::Backspace);
+        assert_eq!(state.query.as_deref(), Some(""), "still searching, empty");
+        let state = after(&menu, &state, Key::Backspace);
+        assert_eq!(state.query, None, "backspacing out of it leaves the search");
+    }
+
+    #[test]
+    fn backspace_outside_a_search_does_nothing() {
+        let menu = flat_menu();
+        assert_eq!(
+            menu.act_on(Key::Backspace, &State::default()),
+            Action::Ignore
+        );
+    }
+
+    #[test]
+    fn escape_cancels_only_when_there_is_no_search_to_leave() {
+        let menu = flat_menu();
+        assert_eq!(
+            menu.act_on(Key::Escape, &State::default()),
+            Action::Finish(Outcome::Cancelled)
+        );
+        let searching = State::default().searching("a".into());
+        assert_eq!(after(&menu, &searching, Key::Escape).query, None);
+    }
+
+    #[test]
+    fn interrupt_cancels_even_in_the_middle_of_a_search() {
+        let menu = flat_menu();
+        let searching = State::default().searching("a".into());
+        assert_eq!(
+            menu.act_on(Key::Interrupt, &searching),
+            Action::Finish(Outcome::Cancelled)
+        );
+    }
+
+    #[test]
+    fn q_cancels_but_is_typed_inside_a_search() {
+        let menu = flat_menu();
+        assert_eq!(
+            menu.act_on(Key::Char('q'), &State::default()),
+            Action::Finish(Outcome::Cancelled)
+        );
+        let searching = State::default().searching(String::new());
+        assert_eq!(
+            after(&menu, &searching, Key::Char('q')).query.as_deref(),
+            Some("q")
+        );
+    }
+
+    #[test]
+    fn a_hint_bound_to_q_wins_over_cancelling() {
+        let menu = flat_menu().add_hint(Hint::new('q', "Quit properly"));
+        assert_eq!(
+            menu.act_on(Key::Char('q'), &State::default()),
+            Action::Finish(Outcome::Hotkey('q'))
+        );
+    }
+
+    #[test]
+    fn a_hint_matches_whatever_the_case_of_the_key() {
+        let upper = flat_menu().add_hint(Hint::new('H', "Health"));
+        assert_eq!(
+            upper.act_on(Key::Char('h'), &State::default()),
+            Action::Finish(Outcome::Hotkey('H')),
+            "reports the key as the menu declared it"
+        );
+        let lower = flat_menu().add_hint(Hint::new('h', "Health"));
+        assert_eq!(
+            lower.act_on(Key::Char('H'), &State::default()),
+            Action::Finish(Outcome::Hotkey('h'))
+        );
+    }
+
+    #[test]
+    fn enter_with_nothing_to_select_does_nothing() {
+        let menu = flat_menu();
+        let nothing = State::default().searching("zzzz".into());
+        assert_eq!(menu.act_on(Key::Enter, &nothing), Action::Ignore);
+        assert_eq!(
+            Menu::new().act_on(Key::Enter, &State::default()),
+            Action::Ignore
+        );
     }
 
     #[test]
@@ -560,6 +948,15 @@ mod tests {
     }
 
     #[test]
+    fn an_uppercase_non_ascii_key_is_typed_lowercased() {
+        // The label is lowercased with Unicode rules, so the query has to be.
+        let menu = tabbed();
+        let state = after(&menu, &State::default(), Key::Char('/'));
+        let state = after(&menu, &state, Key::Char('Ü'));
+        assert_eq!(state.query.as_deref(), Some("ü"));
+    }
+
+    #[test]
     fn leaving_a_search_returns_to_the_tab_it_started_from() {
         let menu = tabbed();
         let state = after(&menu, &State::default(), Key::Char('3'));
@@ -627,5 +1024,202 @@ mod tests {
             .with_layout(Layout::Flat)
             .add_hint(Hint::new('H', "Health"));
         assert_eq!(menu.act_on(Key::Char('h'), &ticking()), Action::Ignore);
+    }
+
+    #[test]
+    fn a_resize_changes_nothing_but_triggers_a_redraw() {
+        let menu = tabbed();
+        let state = State::default().at(2);
+        assert_eq!(menu.act_on(Key::Resize, &state), Action::Ignore);
+    }
+
+    /// Runs the menu on the controlling terminal; the child half of
+    /// [`a_resize_redraws_the_menu_at_the_new_width`]. Does nothing unless
+    /// that test started it.
+    #[test]
+    fn pty_child() {
+        if std::env::var_os(PTY_CHILD).is_none() {
+            return;
+        }
+        let outcome = pty_menu().run(
+            Console::new(ColorMode::Never, false),
+            SelectMode::Always,
+            true,
+        );
+        assert_eq!(outcome.unwrap(), Outcome::Cancelled);
+    }
+
+    const PTY_CHILD: &str = "RUNEMARK_PTY_CHILD";
+    const WIDE: usize = 80;
+    const NARROW: usize = 30;
+
+    fn pty_menu() -> Menu {
+        Menu::new().with_heading("resize").add_group(
+            Group::new("Scripts")
+                .add_item(Item::new("long", "w".repeat(60)))
+                .add_item(Item::new("short", "short")),
+        )
+    }
+
+    /// Appends what the pty master has right now. Returns whether it was
+    /// anything.
+    fn pull(master: i32, seen: &mut Vec<u8>) -> bool {
+        let mut any = false;
+        let mut chunk = [0u8; 4096];
+        loop {
+            // SAFETY: reading into a buffer we own from an open descriptor.
+            let read = unsafe { libc::read(master, chunk.as_mut_ptr().cast(), chunk.len()) };
+            if read <= 0 {
+                return any;
+            }
+            seen.extend_from_slice(&chunk[..usize::try_from(read).unwrap()]);
+            any = true;
+        }
+    }
+
+    /// Reads from the pty master until `done` is satisfied and the output has
+    /// been quiet for a moment, or the deadline passes. Returns whether it was.
+    fn read_pty(master: i32, seen: &mut Vec<u8>, done: impl Fn(&[u8]) -> bool) -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let mut last_data = std::time::Instant::now();
+        while std::time::Instant::now() < deadline {
+            if pull(master, seen) {
+                last_data = std::time::Instant::now();
+            } else if done(seen) && last_data.elapsed() > std::time::Duration::from_millis(300) {
+                // Settled, so a frame written in pieces has all arrived.
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        false
+    }
+
+    #[test]
+    fn a_resize_redraws_the_menu_at_the_new_width() {
+        use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+        use std::os::unix::process::CommandExt;
+        use std::process::{Command, Stdio};
+
+        let mut size = libc::winsize {
+            ws_row: 24,
+            ws_col: u16::try_from(WIDE).unwrap(),
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        let (mut master, mut slave) = (0, 0);
+        // SAFETY: the out-pointers are valid locals; `openpty` fills them.
+        let opened = unsafe {
+            libc::openpty(
+                &mut master,
+                &mut slave,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(opened, 0, "no pty to test with");
+        // SAFETY: both descriptors are fresh from `openpty`.
+        let (master, slave) =
+            unsafe { (OwnedFd::from_raw_fd(master), OwnedFd::from_raw_fd(slave)) };
+        // SAFETY: `master` is open; this only makes reads return at once.
+        unsafe {
+            libc::fcntl(master.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK);
+        }
+        let master_fd = master.as_raw_fd();
+        // SAFETY: `master` is open and `size` is a valid `winsize`.
+        unsafe {
+            libc::ioctl(master_fd, libc::TIOCSWINSZ, &raw const size);
+        }
+
+        let stdio = || Stdio::from(slave.try_clone().unwrap());
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "select::interactive::tests::pty_child",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(PTY_CHILD, "1")
+            .stdin(stdio())
+            .stdout(stdio())
+            .stderr(stdio());
+        // SAFETY: only async-signal-safe calls between fork and exec. The
+        // child becomes a session leader whose controlling terminal is the
+        // pty, so `/dev/tty` opens it.
+        unsafe {
+            command.pre_exec(|| {
+                libc::setsid();
+                libc::ioctl(0, libc::TIOCSCTTY as _, 0);
+                Ok(())
+            });
+        }
+        let mut child = command.spawn().unwrap();
+        drop(slave);
+
+        let mut seen = Vec::new();
+        let first_frame = |seen: &[u8]| String::from_utf8_lossy(seen).contains("short");
+        let drew = read_pty(master_fd, &mut seen, first_frame);
+
+        let mut resized = false;
+        if drew {
+            size.ws_col = u16::try_from(NARROW).unwrap();
+            // SAFETY: `master` is open and `size` is a valid `winsize`.
+            unsafe {
+                libc::ioctl(master_fd, libc::TIOCSWINSZ, &raw const size);
+            }
+            let before = seen.len();
+            let redrawn = |seen: &[u8]| seen[before..].windows(3).any(|w| w == b"\x1b[J");
+            resized = read_pty(master_fd, &mut seen, redrawn);
+        }
+
+        // Ctrl-C ends the menu, whatever happened above.
+        // SAFETY: writing one byte from a literal to an open descriptor.
+        unsafe {
+            libc::write(master_fd, b"\x03".as_ptr().cast(), 1);
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let status = loop {
+            pull(master_fd, &mut seen);
+            if let Some(status) = child.try_wait().unwrap() {
+                pull(master_fd, &mut seen);
+                break Some(status);
+            }
+            if std::time::Instant::now() > deadline {
+                let _ = child.kill();
+                break None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+
+        let text = String::from_utf8_lossy(&seen);
+        assert!(drew, "no first frame: {text:?}");
+        assert!(resized, "no frame after the resize: {text:?}");
+        assert!(
+            status.is_some_and(|s| s.success()),
+            "child: {status:?}\n{text:?}"
+        );
+
+        // Frames are separated by the clear that begins each redraw. The one
+        // right after the resize has to fit the new width, which the first,
+        // at the old width, did not.
+        let frames: Vec<&str> = text.split("\x1b[J").collect();
+        let widest = |frame: &str| {
+            frame
+                .split("\r\n")
+                .filter(|line| !line.contains('\x1b'))
+                .map(|line| line.chars().count())
+                .max()
+                .unwrap_or(0)
+        };
+        assert!(
+            widest(frames[0]) > NARROW,
+            "the first frame was already narrow"
+        );
+        assert!(
+            widest(frames[1]) <= NARROW,
+            "the redraw kept the old width: {:?}",
+            frames[1]
+        );
     }
 }

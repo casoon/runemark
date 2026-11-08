@@ -7,19 +7,73 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+### Breaking
+
+- **Select:** `Item`, `Group` and `Hint` are `#[non_exhaustive]`, so build them with `new` and the
+  builder methods. `Item::id` must be unique within a menu.
+
+### Added
+
+- **Console:** `Console::with_hyperlinks` and `hyperlinks_enabled` switch OSC 8 hyperlinks
+  independently of colour and symbols. They still follow the colour decision by default, so
+  existing output is unchanged.
+- **Reports:** `Report::with_details_hint` changes or removes the "(use --details to view all)"
+  text on a compact "more findings" line. The default text is unchanged.
+- **API:** `DiffBlock`, `Location` and `Badge` gain `write_to` for streaming to any writer.
+- **Select:** `Home`, `End`, `PgUp` and `PgDn` jump through the list, and keys typed before the
+  menu opens are discarded.
+- **Node:** the console, render, error and diff options take `stream: 'stdout' | 'stderr'` to choose
+  which stream `color: 'auto'` checks, and `hyperlinks` to switch OSC 8 links independently of
+  colour.
+- **Node:** `ReportInput` accepts optional `scopeNotes`, `vocabulary`, `topIssuesThreshold` and
+  `detailsHint`, with the Rust defaults when absent.
+- **npm:** the package has an `exports` map with a types entry. The native loader is no longer
+  importable, and ESM named imports work.
+- **Docs:** a Testing guide, and guide sections for the top-issue summary, scope and status notes,
+  badges and confidence, and writer-first `write_to`.
+- **Contributors:** `scripts/verify.sh` runs the CI checks locally, and the repository has issue
+  and pull request templates and monthly Dependabot updates.
+
 ### Changed
 
 - **Pages:** the project site uses the current shared theme (0.12.6).
+- **Select:** `Menu::render` and the interactive menu follow the console's `SymbolTheme` and draw
+  plain ASCII with the ASCII theme.
+- **Select:** the menu redraws on terminal resize at once instead of at the next keypress.
 - **Site:** the start page gets a "How it renders" section on adaptive report width, next to the
   existing narrow-terminal example.
 - **Site:** the footer follows the page language instead of always showing German text, and the
   start page now carries a release teaser and an FAQ (theme 0.11.0).
+- **Releases:** the platform list comes from `napi.targets` only, release verification checks the
+  build provenance attestations, and the publish job pins npm 11.
+- **Docs:** the README and the guide samples are compiled as doctests, and the crate warns about
+  undocumented public items.
+- **Contributors:** the Node tests compare against output rendered by the Rust core (fixtures under
+  `tests/fixtures/node-parity`), so the byte-for-byte parity claim is tested.
 
 ### Fixed
 
-- **Docs:** the README no longer states a version of its own. It said `0.3` was
-  released while the crate and the npm package were at `0.9.1`, six minor
-  releases on, and nothing tied the sentence to the manifests.
+- **Console:** `ColorMode::Auto` treats an empty `NO_COLOR` as unset, as no-color.org specifies,
+  and disables colour when `TERM=dumb`.
+- **Select:** `Menu::run` returns `Outcome::Unavailable` instead of an error when the process has
+  no controlling terminal.
+- **Select:** the filter matches non-ASCII input case-insensitively and ranks by characters
+  instead of bytes.
+- **Select:** narrow and short terminals redraw cleanly. The active tab, heading note and footer
+  labels are shortened, and a terminal shorter than the menu chrome still gets one row.
+- **Node:** `metric.trend` is validated even without a `delta`, and numbers that do not fit a
+  `u32` or a `location.column` without `line` throw instead of wrapping or being dropped.
+- **npm:** the README and examples use `color: 'auto'`, so `NO_COLOR` is honoured, and the build
+  instructions install the tooling first.
+- **Releases:** the npm package carries the MIT licence text, and the stray `LICENSE-APACHE`, which no
+  manifest declared, is gone from the repository and the published crate.
+- **Releases:** the npm package lock file matches the package version, and the release check
+  covers it.
+- **Docs:** the colour policy, API table, hyperlink and security pages match the code, and the
+  README no longer states a version of its own. It said `0.3` was released while the crate and
+  the npm package were at `0.9.1`.
+- **Site:** the hero alt text names the `progress` feature its command needs, and the start page
+  reads platform, Rust and Node facts from the manifests.
 
 ## [0.9.1] - 2026-10-26
 

@@ -33,7 +33,9 @@ process.stdout.write(`${text}\n`)
 ```
 
 Use `color: 'never'` for snapshots and plain logs. `color: 'auto'` is
-TTY-aware and is the default.
+TTY-aware and is the default. It checks stdout; if you write to stderr, pass
+`stream: 'stderr'` (an explicit `isTerminal` wins over both). `color: 'always'`
+forces colour on purpose and overrides `NO_COLOR`.
 
 ## Reports
 
@@ -72,7 +74,7 @@ const report = new RunemarkReport({
 })
 
 process.stdout.write(report.render({
-  color: process.stdout.isTTY ? 'always' : 'never',
+  color: 'auto',
   width: process.stdout.columns,
 }))
 ```
@@ -101,7 +103,7 @@ process.stderr.write(renderError({
   heading: 'Browser executable not found',
   explanation: 'The audit needs a local browser.',
   commands: ['npx playwright install chromium'],
-}, { color: 'auto' }))
+}, { color: 'auto', stream: 'stderr' }))
 
 process.stdout.write(renderDiff({
   changes: [

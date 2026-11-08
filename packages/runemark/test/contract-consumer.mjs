@@ -54,6 +54,30 @@ try {
     encoding: 'utf8',
   })
   assert.match(testOutput, /Consumer contract validation passed/)
+
+  // 5. The same through ESM named imports, and the private loader stays closed.
+  const esmScript = `
+    import assert from 'node:assert/strict';
+    import { createRequire } from 'node:module';
+    import { RunemarkConsole, RunemarkReport, Verdict, renderStatus } from '@casoon/runemark';
+
+    const rmConsole = new RunemarkConsole({ color: 'never', isTerminal: false });
+    assert.equal(rmConsole.success('Installed ok'), 'Installed ok');
+    assert.match(renderStatus(Verdict.Passed, 'Ready', { color: 'never', isTerminal: false }), /\\[OK\\] Ready/);
+    const report = new RunemarkReport({ schemaVersion: 1, title: 'ESM consumer test', verdict: Verdict.Passed });
+    assert.match(report.render({ color: 'never', isTerminal: false }), /\\[OK\\] ESM consumer test/);
+
+    const require = createRequire(import.meta.url);
+    assert.throws(() => require('@casoon/runemark/native.cjs'), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' });
+    process.stdout.write('ESM consumer validation passed.\\n');
+  `
+  fs.writeFileSync(path.join(tmpDir, 'consumer.mjs'), esmScript)
+
+  const esmOutput = execSync('node consumer.mjs', {
+    cwd: tmpDir,
+    encoding: 'utf8',
+  })
+  assert.match(esmOutput, /ESM consumer validation passed/)
 } finally {
   fs.rmSync(tmpDir, { recursive: true, force: true })
 }

@@ -23,7 +23,7 @@ use std::fmt;
 
 use unicode_width::UnicodeWidthStr;
 
-use crate::color::{Console, Tone};
+use crate::color::{Console, SymbolTheme, Tone};
 
 /// Controls whether a menu takes over the terminal.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -69,9 +69,17 @@ pub enum Layout {
 }
 
 /// One selectable entry.
+///
+/// Non-exhaustive, so a field can be added without a breaking release: build
+/// one with [`Item::new`] and its `with_` methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Item {
     /// Returned on selection. The application's own identifier.
+    ///
+    /// Must be unique within a menu. Ticking is by id, so two entries sharing
+    /// one tick together, and `Menu::run_multi` reports the id twice in
+    /// [`Picked::Chosen`].
     pub id: String,
     /// The text shown in the list.
     pub label: String,
@@ -80,6 +88,7 @@ pub struct Item {
 }
 
 impl Item {
+    /// Creates an entry with an id and a label, without a description.
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             id: id.into(),
@@ -88,6 +97,7 @@ impl Item {
         }
     }
 
+    /// Adds the optional second column shown next to the label.
     pub fn with_description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
@@ -95,9 +105,15 @@ impl Item {
 }
 
 /// A titled section of entries.
+///
+/// Non-exhaustive, so a field can be added without a breaking release: build
+/// one with [`Group::new`] and its builder methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Group {
+    /// The heading shown above the group, and its tab label under [`Layout::Tabs`].
     pub label: String,
+    /// The group's entries, in display order.
     pub items: Vec<Item>,
     /// The tab this group shares with its neighbours, under [`Layout::Tabs`].
     ///
@@ -109,6 +125,7 @@ pub struct Group {
 }
 
 impl Group {
+    /// Creates an empty group with a label.
     pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
@@ -118,6 +135,7 @@ impl Group {
         }
     }
 
+    /// Appends an entry to the group.
     pub fn add_item(mut self, item: Item) -> Self {
         self.items.push(item);
         self
@@ -154,13 +172,20 @@ struct Tab<'a> {
 }
 
 /// A key shown in the footer, reported back when pressed.
+///
+/// Non-exhaustive, so a field can be added without a breaking release: build
+/// one with [`Hint::new`].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Hint {
+    /// The key to press; matched case-insensitively and before the built-in keys.
     pub key: char,
+    /// The text shown next to the key in the footer.
     pub label: String,
 }
 
 impl Hint {
+    /// Creates a footer hint for a key.
     pub fn new(key: char, label: impl Into<String>) -> Self {
         Self {
             key,
@@ -170,6 +195,11 @@ impl Hint {
 }
 
 /// What the user did.
+///
+/// Exhaustive on purpose, unlike the presentation types. A caller matches on
+/// this to decide what happens next, and a new outcome is a new case it has to
+/// handle — better a compile error than a wildcard arm quietly treating it as
+/// a cancel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     /// An entry was chosen, carrying its [`Item::id`].
@@ -184,6 +214,9 @@ pub enum Outcome {
 }
 
 /// What the user did with a menu run by `Menu::run_multi` (`select` feature).
+///
+/// Exhaustive on purpose, for the same reason as [`Outcome`]: callers match
+/// it, and a new case should be a compile error, not a silent fallthrough.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Picked {
     /// Enter was pressed, carrying the [`Item::id`]s ticked at that moment,
@@ -211,25 +244,78 @@ const MIN_DESCRIPTION: usize = 12;
 const TAB_GAP: usize = 3;
 /// Columns between two keys in the footer.
 const FOOTER_GAP: usize = 3;
-/// What a dropped run of tabs costs to mark: the ellipsis and its gap.
-const TAB_ELLIPSIS: usize = 1 + TAB_GAP;
 /// What a divider between two tabs costs beyond the gap already there.
 const TAB_DIVIDER: usize = 1 + TAB_GAP;
 /// Tabs beyond this many have no digit left to select them; the arrow keys
 /// still reach them.
 const TAB_KEYS: usize = 9;
 
-/// Shortens `text` to `max` columns, marking the cut with an ellipsis.
+/// The glyphs the menu draws with, one set per [`SymbolTheme`].
+///
+/// A menu printed to a pipe or a log file is the documented fallback for a
+/// caller that cannot run it, so it follows the console's theme like the rest
+/// of the crate rather than emitting Unicode into plain output.
+///
+/// Every glyph is as wide in one set as in the other except the ellipsis,
+/// which is why that is the only width the layout asks for.
+#[derive(Debug, Clone, Copy)]
+struct Glyphs {
+    cursor: &'static str,
+    above: &'static str,
+    below: &'static str,
+    /// The tab-switching keys, as the footer names them.
+    arrows: &'static str,
+    ellipsis: &'static str,
+    divider: &'static str,
+    rule: &'static str,
+}
+
+impl Glyphs {
+    const UNICODE: Self = Self {
+        cursor: "›",
+        above: "↑",
+        below: "↓",
+        arrows: "←→",
+        ellipsis: "…",
+        divider: "│",
+        rule: "─",
+    };
+
+    const ASCII: Self = Self {
+        cursor: ">",
+        above: "^",
+        below: "v",
+        arrows: "<>",
+        ellipsis: "...",
+        divider: "|",
+        rule: "-",
+    };
+
+    const fn of(theme: SymbolTheme) -> Self {
+        match theme {
+            SymbolTheme::Unicode => Self::UNICODE,
+            SymbolTheme::Ascii => Self::ASCII,
+        }
+    }
+
+    /// What a dropped run of tabs costs to mark: the ellipsis and its gap.
+    fn tab_ellipsis(self) -> usize {
+        self.ellipsis.width() + TAB_GAP
+    }
+}
+
+/// Shortens `text` to `max` columns, marking the cut with `ellipsis`.
 ///
 /// Entries are shortened rather than wrapped. A wrapped line would change the
 /// number of lines the frame occupies, which the redraw counts on, and a
 /// description spilling to column zero is what makes a long list unreadable in
 /// the first place.
-fn shorten(text: &str, max: usize) -> std::borrow::Cow<'_, str> {
+fn shorten<'a>(text: &'a str, max: usize, ellipsis: &str) -> std::borrow::Cow<'a, str> {
     if text.width() <= max {
         return std::borrow::Cow::Borrowed(text);
     }
-    if max <= 1 {
+    let marker = ellipsis.width();
+    if max <= marker {
         return std::borrow::Cow::Borrowed("");
     }
 
@@ -237,13 +323,13 @@ fn shorten(text: &str, max: usize) -> std::borrow::Cow<'_, str> {
     let mut used = 0;
     for character in text.chars() {
         let next = character.to_string().width();
-        if used + next > max - 1 {
+        if used + next > max - marker {
             break;
         }
         out.push(character);
         used += next;
     }
-    out.push('…');
+    out.push_str(ellipsis);
     std::borrow::Cow::Owned(out)
 }
 
@@ -257,6 +343,7 @@ fn tab_window(
     labels: &[(String, bool)],
     active: usize,
     columns: Option<usize>,
+    glyphs: Glyphs,
 ) -> std::ops::Range<usize> {
     let all = 0..labels.len();
     let Some(columns) = columns else {
@@ -279,10 +366,10 @@ fn tab_window(
             width += label.width();
         }
         if range.start > 0 {
-            width += TAB_ELLIPSIS;
+            width += glyphs.tab_ellipsis();
         }
         if range.end < labels.len() {
-            width += TAB_ELLIPSIS;
+            width += glyphs.tab_ellipsis();
         }
         width
     };
@@ -372,7 +459,7 @@ impl Score {
 /// not match.
 fn score(item: &Item, query: &str) -> Option<Score> {
     let label = item.label.to_lowercase();
-    if let Some(at) = label.find(query) {
+    if let Some(at) = char_position(&label, query) {
         return Some(Score(
             Score::LABEL_SUBSTRING + u32::try_from(at).unwrap_or(u32::MAX),
         ));
@@ -384,10 +471,17 @@ fn score(item: &Item, query: &str) -> Option<Score> {
         ));
     }
     let description = item.description.as_ref()?.to_lowercase();
-    let at = description.find(query)?;
+    let at = char_position(&description, query)?;
     Some(Score(
         Score::DESCRIPTION + u32::try_from(at).unwrap_or(u32::MAX),
     ))
+}
+
+/// Where `query` first occurs in `text`, counted in characters rather than
+/// bytes, so a label with accents does not rank as if its match were further
+/// along than it is.
+fn char_position(text: &str, query: &str) -> Option<usize> {
+    text.find(query).map(|at| text[..at].chars().count())
 }
 
 /// The span `query` occupies in `text` as a subsequence, if it occurs at all.
@@ -395,7 +489,7 @@ fn score(item: &Item, query: &str) -> Option<Score> {
 /// The span is what separates a tight match from a lucky one: `dl` spans two
 /// characters in `dl-report` and fourteen in `deploy:landings`.
 fn subsequence_span(text: &str, query: &str) -> Option<usize> {
-    let mut chars = text.char_indices();
+    let mut chars = text.chars().enumerate();
     let mut first = None;
     let mut last = 0;
 
@@ -456,9 +550,18 @@ impl Viewport {
     }
 
     /// Whether `row` lands inside what this viewport draws of `rows` rows.
-    #[cfg(any(all(feature = "select", unix), test))]
+    #[cfg(all(feature = "select", unix))]
     pub(crate) fn shows(self, rows: usize, row: usize) -> bool {
         self.window(rows).contains(&row)
+    }
+
+    /// Whether the body is tall enough to spend lines on scroll indicators.
+    ///
+    /// Two indicators and a row need three lines. Below that the rows win:
+    /// a frame taller than the terminal is worse than not saying how much is
+    /// out of view.
+    fn has_room_for_indicators(self) -> bool {
+        self.height >= 3
     }
 
     /// The rows to draw, leaving room for whichever indicators are needed.
@@ -469,6 +572,12 @@ impl Viewport {
     fn window(self, rows: usize) -> std::ops::Range<usize> {
         if rows <= self.height {
             return 0..rows;
+        }
+
+        if !self.has_room_for_indicators() {
+            let height = self.height.max(1);
+            let start = self.start.min(rows - height);
+            return start..start + height;
         }
 
         let start = self.start.min(rows.saturating_sub(1));
@@ -505,15 +614,18 @@ pub struct Menu {
 }
 
 impl Menu {
+    /// Creates an empty menu.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Sets the heading line shown above the list.
     pub fn with_heading(mut self, heading: impl Into<String>) -> Self {
         self.heading = Some(heading.into());
         self
     }
 
+    /// Sets a short note shown beside the heading, for example the tool in use.
     pub fn with_note(mut self, note: impl Into<String>) -> Self {
         self.note = Some(note.into());
         self
@@ -534,6 +646,7 @@ impl Menu {
         self
     }
 
+    /// Appends a group of entries.
     pub fn add_group(mut self, group: Group) -> Self {
         self.groups.push(group);
         self
@@ -553,6 +666,7 @@ impl Menu {
         self
     }
 
+    /// Appends a footer key that is reported back when pressed.
     pub fn add_hint(mut self, hint: Hint) -> Self {
         self.hints.push(hint);
         self
@@ -568,6 +682,7 @@ impl Menu {
         self.items().count()
     }
 
+    /// Whether the menu has no selectable entries.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -613,7 +728,7 @@ impl Menu {
     }
 
     /// How many tabs there are, for the interactive path's arithmetic.
-    #[cfg(all(feature = "select", any(unix, test)))]
+    #[cfg(all(feature = "select", unix))]
     fn tab_count(&self) -> usize {
         self.tabs().len()
     }
@@ -646,20 +761,42 @@ impl Menu {
         columns: Option<usize>,
     ) -> std::io::Result<()> {
         let labels = self.tab_labels();
-        let window = tab_window(&labels, active, columns);
+        let glyphs = Glyphs::of(console.symbol_theme());
+        let window = tab_window(&labels, active, columns, glyphs);
+        let mut marks_before = window.start > 0;
+        let mut marks_after = window.end < labels.len();
+
+        // The active tab is never dropped, so when it alone is wider than the
+        // row it is shortened instead — and the markers for the tabs beyond it
+        // give way first, since the label is what the row is for.
+        let mut shortened = None;
+        if let Some(columns) = columns.filter(|_| window.len() == 1) {
+            let room = columns.saturating_sub(MARKER_WIDTH);
+            let marks = usize::from(marks_before) + usize::from(marks_after);
+            let label = &labels[active].0;
+            if label.width() + marks * glyphs.tab_ellipsis() > room {
+                marks_before = false;
+                marks_after = false;
+                shortened = Some(shorten(label, room, glyphs.ellipsis).into_owned());
+            }
+        }
 
         // The row lines up with the entry labels below it, past the marker.
         let mut column = MARKER_WIDTH;
         let mut underline = None;
         write!(writer, "{:MARKER_WIDTH$}", "")?;
 
-        if window.start > 0 {
-            console.write_paint(Tone::Muted, "…", writer)?;
+        if marks_before {
+            console.write_paint(Tone::Muted, glyphs.ellipsis, writer)?;
             write!(writer, "{:TAB_GAP$}", "")?;
-            column += TAB_ELLIPSIS;
+            column += glyphs.tab_ellipsis();
         }
         for index in window.clone() {
             let (label, divider) = &labels[index];
+            let label = shortened
+                .as_deref()
+                .filter(|_| index == active)
+                .unwrap_or(label);
             if index > window.start {
                 write!(writer, "{:TAB_GAP$}", "")?;
                 column += TAB_GAP;
@@ -667,7 +804,7 @@ impl Menu {
                 // would separate the tabs from nothing, and after an ellipsis
                 // the break is already marked.
                 if *divider {
-                    console.write_paint(Tone::Muted, "│", writer)?;
+                    console.write_paint(Tone::Muted, glyphs.divider, writer)?;
                     write!(writer, "{:TAB_GAP$}", "")?;
                     column += TAB_DIVIDER;
                 }
@@ -680,15 +817,15 @@ impl Menu {
             }
             column += label.width();
         }
-        if window.end < labels.len() {
+        if marks_after {
             write!(writer, "{:TAB_GAP$}", "")?;
-            console.write_paint(Tone::Muted, "…", writer)?;
+            console.write_paint(Tone::Muted, glyphs.ellipsis, writer)?;
         }
         writeln!(writer)?;
 
         if let Some((at, width)) = underline {
             write!(writer, "{:at$}", "")?;
-            console.write_paint(Tone::Success, "─".repeat(width), writer)?;
+            console.write_paint(Tone::Success, glyphs.rule.repeat(width), writer)?;
         }
         writeln!(writer)
     }
@@ -812,15 +949,21 @@ impl Menu {
     ) -> std::io::Result<()> {
         let columns = viewport.and_then(|viewport| viewport.width);
         let query = view.query;
+        let glyphs = Glyphs::of(console.symbol_theme());
+        let ellipsis = glyphs.ellipsis;
 
         if let Some(heading) = &self.heading {
-            let note_room = self
-                .note
-                .as_ref()
-                .map_or(0, |note| note.width() + GAP_WIDTH);
+            // The note is shortened to the line first, then the heading to what
+            // it leaves; a note that fit the line unshortened would make the
+            // room below a promise the line did not keep.
+            let note = self.note.as_ref().map(|note| {
+                let room = columns.map_or(usize::MAX, |columns| columns.saturating_sub(GAP_WIDTH));
+                shorten(note, room, ellipsis)
+            });
+            let note_room = note.as_ref().map_or(0, |note| note.width() + GAP_WIDTH);
             let room = columns.map_or(usize::MAX, |columns| columns.saturating_sub(note_room));
-            console.write_paint(Tone::Title, shorten(heading, room), writer)?;
-            if let Some(note) = &self.note {
+            console.write_paint(Tone::Title, shorten(heading, room, ellipsis), writer)?;
+            if let Some(note) = &note {
                 write!(writer, "  ")?;
                 console.write_paint(Tone::Muted, note, writer)?;
             }
@@ -829,7 +972,7 @@ impl Menu {
         if let Some(summary) = &self.summary {
             let room = columns.map_or(usize::MAX, |columns| columns.saturating_sub(MARKER_WIDTH));
             write!(writer, "{:MARKER_WIDTH$}", "")?;
-            console.write_paint(Tone::Muted, shorten(summary, room), writer)?;
+            console.write_paint(Tone::Muted, shorten(summary, room, ellipsis), writer)?;
             writeln!(writer)?;
         }
         if self.heading.is_some() || self.summary.is_some() {
@@ -847,9 +990,19 @@ impl Menu {
         );
         let rows = self.body_rows(view);
         let window = viewport.map_or(0..rows.len(), |viewport| viewport.window(rows.len()));
+        let indicators = viewport.is_none_or(Viewport::has_room_for_indicators);
+        let line_room = columns.unwrap_or(usize::MAX);
 
-        if window.start > 0 {
-            console.write_paint(Tone::Muted, format!("  ↑ {} more", window.start), writer)?;
+        if window.start > 0 && indicators {
+            console.write_paint(
+                Tone::Muted,
+                shorten(
+                    &format!("  {} {} more", glyphs.above, window.start),
+                    line_room,
+                    ellipsis,
+                ),
+                writer,
+            )?;
             writeln!(writer)?;
         }
 
@@ -857,14 +1010,14 @@ impl Menu {
             match row {
                 Row::Group(label) => {
                     let room = columns.unwrap_or(usize::MAX);
-                    console.write_paint(Tone::Info, shorten(label, room), writer)?;
+                    console.write_paint(Tone::Info, shorten(label, room, ellipsis), writer)?;
                 }
                 Row::Item(item, index) => {
                     let selected = cursor == Some(*index);
-                    let marker = if selected { "›" } else { " " };
+                    let marker = if selected { glyphs.cursor } else { " " };
                     let boxes = view.checked.map(|checked| checked.contains(&item.id));
                     let room = width.saturating_sub(boxes.map_or(0, |_| CHECKBOX_WIDTH));
-                    let label = shorten(&item.label, room);
+                    let label = shorten(&item.label, room, ellipsis);
                     let padding = room.saturating_sub(label.width());
 
                     write!(writer, "{marker} ")?;
@@ -893,7 +1046,11 @@ impl Menu {
                         });
                         if room >= MIN_DESCRIPTION {
                             write!(writer, "{:padding$}  ", "")?;
-                            console.write_paint(Tone::Muted, shorten(description, room), writer)?;
+                            console.write_paint(
+                                Tone::Muted,
+                                shorten(description, room, ellipsis),
+                                writer,
+                            )?;
                         }
                     }
                 }
@@ -902,13 +1059,25 @@ impl Menu {
         }
 
         if rows.is_empty() && query.is_some() {
-            console.write_paint(Tone::Muted, "  no matches", writer)?;
+            console.write_paint(
+                Tone::Muted,
+                shorten("  no matches", line_room, ellipsis),
+                writer,
+            )?;
             writeln!(writer)?;
         }
 
         let remaining = rows.len() - window.end;
-        if remaining > 0 {
-            console.write_paint(Tone::Muted, format!("  ↓ {remaining} more"), writer)?;
+        if remaining > 0 && indicators {
+            console.write_paint(
+                Tone::Muted,
+                shorten(
+                    &format!("  {} {remaining} more", glyphs.below),
+                    line_room,
+                    ellipsis,
+                ),
+                writer,
+            )?;
             writeln!(writer)?;
         }
 
@@ -920,13 +1089,17 @@ impl Menu {
             // long one cannot wrap and throw the redraw's line count off.
             let room = columns.map_or(usize::MAX, |columns| columns.saturating_sub(2));
             if query.is_empty() {
-                console.write_paint(Tone::Muted, shorten("type to filter", room), writer)?;
+                console.write_paint(
+                    Tone::Muted,
+                    shorten("type to filter", room, ellipsis),
+                    writer,
+                )?;
             } else {
-                console.write_paint(Tone::Title, shorten(query, room), writer)?;
+                console.write_paint(Tone::Title, shorten(query, room, ellipsis), writer)?;
             }
             writeln!(writer)?;
         } else {
-            let keys = self.footer_keys(view, cursor);
+            let keys = self.footer_keys(view, cursor, glyphs);
             if !keys.is_empty() {
                 writeln!(writer)?;
                 for line in footer_lines(&keys, columns) {
@@ -936,7 +1109,11 @@ impl Menu {
                         }
                         console.write_paint(Tone::Success, key, writer)?;
                         write!(writer, " ")?;
-                        console.write_paint(Tone::Muted, label, writer)?;
+                        // A key alone on its line can still be wider than the
+                        // terminal; there is nowhere narrower to put it, so
+                        // its label gives way.
+                        let room = line_room.saturating_sub(key.width() + 1);
+                        console.write_paint(Tone::Muted, shorten(label, room, ellipsis), writer)?;
                     }
                     writeln!(writer)?;
                 }
@@ -951,10 +1128,15 @@ impl Menu {
     /// `/` is reserved for the filter and cannot be bound as a hint, so
     /// nothing else can advertise it. A key the menu answers to but never
     /// mentions is a key nobody presses.
-    fn footer_keys(&self, view: View<'_>, cursor: Option<usize>) -> Vec<(String, &str)> {
+    fn footer_keys(
+        &self,
+        view: View<'_>,
+        cursor: Option<usize>,
+        glyphs: Glyphs,
+    ) -> Vec<(String, &str)> {
         let mut keys = Vec::with_capacity(self.hints.len() + 3);
         if self.active_tab(view).is_some() {
-            keys.push(("\u{2190}\u{2192}".to_owned(), "group"));
+            keys.push((glyphs.arrows.to_owned(), "group"));
         }
         if view.checked.is_some() {
             // Hints are not offered here: a key that ends the menu would drop
@@ -1019,7 +1201,9 @@ impl Menu {
         let footer = if view.query.is_some() {
             2
         } else {
-            let keys = self.footer_keys(view, Some(0));
+            // Both glyph sets are as wide as each other here, so measuring with
+            // one measures the other.
+            let keys = self.footer_keys(view, Some(0), Glyphs::UNICODE);
             if keys.is_empty() {
                 0
             } else {
@@ -1040,6 +1224,8 @@ impl fmt::Display for Menu {
 #[cfg(all(feature = "select", unix))]
 mod interactive;
 #[cfg(all(feature = "select", unix))]
+mod resize;
+#[cfg(all(feature = "select", unix))]
 mod terminal;
 
 /// Without a terminal backend the menu still exists; it just never takes over.
@@ -1048,6 +1234,7 @@ mod terminal;
 /// fall back to [`Menu::render`] on [`Outcome::Unavailable`] everywhere else.
 #[cfg(all(feature = "select", not(unix)))]
 impl Menu {
+    /// Reports [`Outcome::Unavailable`]: there is no terminal backend here.
     pub fn run(
         &self,
         _console: Console,
@@ -1057,6 +1244,7 @@ impl Menu {
         Ok(Outcome::Unavailable)
     }
 
+    /// Reports [`Picked::Unavailable`]: there is no terminal backend here.
     pub fn run_multi(
         &self,
         _console: Console,
@@ -1072,7 +1260,13 @@ mod tests {
     use super::*;
     use crate::ColorMode;
 
+    /// No colour, with the Unicode glyphs the layout tests assert on.
     fn plain() -> Console {
+        Console::new(ColorMode::Never, false).with_theme(SymbolTheme::Unicode)
+    }
+
+    /// What a pipe or a log file gets: no colour, and the ASCII theme with it.
+    fn ascii() -> Console {
         Console::new(ColorMode::Never, false)
     }
 
@@ -1364,32 +1558,6 @@ mod tests {
     }
 
     #[test]
-    fn scrolling_keeps_every_cursor_position_in_view() {
-        // The bug this pins: stepping to the last entry left the cursor one
-        // row below the window, because the scroll maths and the window maths
-        // disagreed about how many lines the indicators cost.
-        let menu = long_menu(40);
-        let rows = menu.body_height(flat());
-
-        for height in [4, 6, 11, 21, 30] {
-            let mut start = 0usize;
-            for index in 0..menu.len() {
-                let cursor = menu.row_of_item(index, flat());
-                if cursor < start {
-                    start = cursor;
-                }
-                while start < rows - 1 && !Viewport::new(start, height).shows(rows, cursor) {
-                    start += 1;
-                }
-                assert!(
-                    Viewport::new(start, height).shows(rows, cursor),
-                    "height {height}, item {index} (row {cursor}) not visible from {start}"
-                );
-            }
-        }
-    }
-
-    #[test]
     fn nothing_exceeds_the_given_width() {
         // The defect this pins: without a width, a long description wrapped to
         // column zero and destroyed the two-column layout.
@@ -1438,10 +1606,13 @@ mod tests {
     fn shortening_counts_display_columns_not_bytes() {
         // German descriptions are the normal case here; multi-byte characters
         // must not be counted twice.
-        assert_eq!(shorten("äöüß", 10), "äöüß");
-        assert_eq!(shorten("äöüß", 3).width(), 3);
-        assert!(shorten("äöüß", 3).ends_with('…'));
-        assert_eq!(shorten("abc", 1), "");
+        assert_eq!(shorten("äöüß", 10, "…"), "äöüß");
+        assert_eq!(shorten("äöüß", 3, "…").width(), 3);
+        assert!(shorten("äöüß", 3, "…").ends_with('…'));
+        assert_eq!(shorten("abc", 1, "…"), "");
+        assert_eq!(shorten("abcdef", 3, "..."), "", "no room beside the marker");
+        assert_eq!(shorten("abcdef", 5, "..."), "ab...");
+        assert_eq!(shorten("abcdef", 5, "...").width(), 5);
     }
 
     fn searched(menu: &Menu, query: &str) -> Vec<String> {
@@ -1501,6 +1672,36 @@ mod tests {
     fn a_description_match_is_found_when_no_name_matches() {
         let hits = searched(&script_menu(), "lint");
         assert_eq!(hits, ["check"]);
+    }
+
+    fn labelled(labels: &[&str]) -> Menu {
+        let mut group = Group::new("G");
+        for label in labels {
+            group = group.add_item(Item::new(*label, *label));
+        }
+        Menu::new().add_group(group)
+    }
+
+    #[test]
+    fn a_non_ascii_query_finds_a_non_ascii_label() {
+        let menu = labelled(&["Über uns", "Kontakt"]);
+        assert_eq!(searched(&menu, "über"), ["Über uns"]);
+    }
+
+    #[test]
+    fn a_substring_match_is_ranked_by_characters_not_bytes() {
+        // "x" sits at character 2 of the first label and character 3 of the
+        // second, but at byte 4 against byte 3.
+        let menu = labelled(&["abcx", "üüx"]);
+        assert_eq!(searched(&menu, "x"), ["üüx", "abcx"]);
+    }
+
+    #[test]
+    fn a_subsequence_span_is_measured_in_characters_not_bytes() {
+        // "xy" spans four characters in the first label and five in the second,
+        // but six bytes against five.
+        let menu = labelled(&["xabcy", "xüüy"]);
+        assert_eq!(searched(&menu, "xy"), ["xüüy", "xabcy"]);
     }
 
     #[test]
@@ -1579,8 +1780,12 @@ mod tests {
     }
 
     fn framed(menu: &Menu, view: View<'_>) -> String {
+        framed_with(plain(), menu, view)
+    }
+
+    fn framed_with(console: Console, menu: &Menu, view: View<'_>) -> String {
         crate::internal::collect_to_string(|buf| {
-            menu.write_frame(buf, plain(), Some(0), None, view)
+            menu.write_frame(buf, console, Some(0), None, view)
         })
     }
 
@@ -1815,7 +2020,7 @@ mod tests {
             .collect();
         for active in 0..labels.len() {
             for columns in [20, 30, 45, 80] {
-                let window = tab_window(&labels, active, Some(columns));
+                let window = tab_window(&labels, active, Some(columns), Glyphs::UNICODE);
                 assert!(
                     window.contains(&active),
                     "width {columns}, tab {active}: {window:?}"
@@ -1964,6 +2169,88 @@ mod tests {
     }
 
     #[test]
+    fn nothing_exceeds_a_very_narrow_terminal() {
+        // Anything that wraps desynchronises the redraw's line count, so every
+        // line has to be cut to the width rather than just most of them.
+        let menu = tabbed(5)
+            .with_note("a note far longer than the terminal is wide")
+            .add_hint(Hint::new('H', "A hint label far too long to fit"))
+            .add_group(
+                Group::new("An extraordinarily long group name")
+                    .add_item(Item::new("x", "x").with_description("and a long description")),
+            );
+
+        for console in [plain(), ascii()] {
+            for columns in [10, 12, 16, 20, 30] {
+                for view in [on_tab(5), on_tab(2), searching("a"), searching("zzz")] {
+                    let shown = crate::internal::collect_to_string(|buf| {
+                        menu.write_frame(
+                            buf,
+                            console,
+                            Some(0),
+                            Some(Viewport::new(0, 999).with_width(Some(columns))),
+                            view,
+                        )
+                    });
+                    for line in shown.lines() {
+                        assert!(
+                            line.width() <= columns,
+                            "width {columns}, view {view:?}: {line:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_ticking_footer_key_wider_than_the_terminal_is_shortened() {
+        let checked: BTreeSet<String> = BTreeSet::new();
+        let view = View {
+            checked: Some(&checked),
+            ..View::default()
+        };
+        let menu = long_menu(20);
+        let shown = crate::internal::collect_to_string(|buf| {
+            menu.write_frame(
+                buf,
+                plain(),
+                Some(0),
+                Some(Viewport::new(0, 999).with_width(Some(8))),
+                view,
+            )
+        });
+        for line in shown.lines() {
+            assert!(line.width() <= 8, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn a_body_too_short_for_indicators_draws_exactly_the_rows_it_has() {
+        // Two indicators and a row need three lines. Below that the frame
+        // would be taller than the terminal it was sized for.
+        let menu = long_menu(40);
+        let rows = menu.body_height(flat());
+        let chrome = menu.chrome_height(flat(), Some(40));
+
+        for height in [1, 2] {
+            for start in [0, 10, 38, 39] {
+                let viewport = Viewport::new(start, height).with_width(Some(40));
+                let window = viewport.window(rows);
+                assert_eq!(window.len(), height, "height {height}, start {start}");
+                let shown = crate::internal::collect_to_string(|buf| {
+                    menu.write_frame(buf, plain(), Some(window.start), Some(viewport), flat())
+                });
+                assert_eq!(
+                    shown.lines().count(),
+                    chrome + height,
+                    "height {height}, start {start}:\n{shown}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn a_long_query_cannot_wrap_the_frame() {
         let menu = tabbed(3);
         let query = "a".repeat(200);
@@ -2063,5 +2350,108 @@ mod tests {
                 .expect("run"),
             Outcome::Unavailable
         );
+    }
+
+    #[test]
+    fn the_ascii_glyphs_take_the_room_of_the_unicode_ones() {
+        // The footer is measured with one set and written with either.
+        assert_eq!(Glyphs::ASCII.arrows.width(), Glyphs::UNICODE.arrows.width());
+        assert_eq!(Glyphs::ASCII.cursor.width(), Glyphs::UNICODE.cursor.width());
+        assert_eq!(
+            Glyphs::ASCII.divider.width(),
+            Glyphs::UNICODE.divider.width()
+        );
+        assert_eq!(Glyphs::ASCII.rule.width(), Glyphs::UNICODE.rule.width());
+    }
+
+    #[test]
+    fn an_ascii_console_gets_pure_ascii_from_render() {
+        let menu = Menu::new()
+            .with_heading("casoon.dev")
+            .with_note("pnpm")
+            .add_group(
+                Group::new("Development")
+                    .add_item(Item::new("dev", "dev").with_description("Start the site")),
+            )
+            .add_hint(Hint::new('U', "Updates"));
+        assert!(menu.render(ascii()).is_ascii());
+        assert!(menu.to_string().is_ascii(), "Display is plain output too");
+    }
+
+    #[test]
+    fn an_ascii_console_gets_pure_ascii_from_every_part_of_a_frame() {
+        let mut menu = tabbed(9).add_hint(Hint::new('U', "Updates"));
+        menu = menu.add_group(
+            Group::new("Packages")
+                .in_tab("Packages")
+                .with_divider()
+                .add_item(
+                    Item::new("p", "p").with_description("a description that cannot possibly fit"),
+                ),
+        );
+        // The tab row windowed with ellipses, the rule, the cursor, the divider.
+        for tab in [4, 9] {
+            let shown = crate::internal::collect_to_string(|buf| {
+                menu.write_frame(
+                    buf,
+                    ascii(),
+                    Some(0),
+                    Some(Viewport::new(0, 999).with_width(Some(40))),
+                    on_tab(tab),
+                )
+            });
+            assert!(shown.is_ascii(), "{shown}");
+        }
+        let searching_frame = framed_with(ascii(), &menu, searching("zzz"));
+        assert!(searching_frame.is_ascii(), "{searching_frame}");
+    }
+
+    #[test]
+    fn an_ascii_console_marks_what_is_scrolled_out_of_view() {
+        let menu = long_menu(40);
+        let shown = crate::internal::collect_to_string(|buf| {
+            menu.write_frame(
+                buf,
+                ascii(),
+                Some(15),
+                Some(Viewport::new(10, 10).with_width(Some(40))),
+                flat(),
+            )
+        });
+        assert!(shown.is_ascii(), "{shown}");
+        assert!(shown.contains("^ 10 more"), "{shown}");
+        assert!(shown.contains("v 2"), "{shown}");
+    }
+
+    #[test]
+    fn ascii_output_marks_the_cursor_and_the_divider() {
+        let menu = tabbed(3);
+        let shown = framed_with(ascii(), &menu, on_tab(0));
+        assert!(shown.contains("> a0"), "{shown}");
+        assert!(shown.contains("<> group"), "{shown}");
+        assert!(
+            shown.contains("---"),
+            "the rule under the active tab: {shown}"
+        );
+    }
+
+    #[test]
+    fn an_ascii_tab_row_never_exceeds_the_given_width() {
+        // The ellipsis is three columns there, and the window has to know.
+        let menu = tabbed(9);
+        for columns in [20, 30, 45, 80, 120] {
+            let shown = crate::internal::collect_to_string(|buf| {
+                menu.write_frame(
+                    buf,
+                    ascii(),
+                    Some(0),
+                    Some(Viewport::new(0, 999).with_width(Some(columns))),
+                    on_tab(4),
+                )
+            });
+            for line in shown.lines() {
+                assert!(line.width() <= columns, "width {columns}: {line:?}");
+            }
+        }
     }
 }

@@ -1,0 +1,56 @@
+{
+  "function": "renderReport",
+  "input": {
+    "schemaVersion": 1,
+    "title": "Links",
+    "verdict": "passed",
+    "groups": [
+      {
+        "title": "Pages",
+        "findings": [
+          {
+            "message": "Slow page",
+            "tone": "warning",
+            "location": {
+              "kind": "url",
+              "value": "https://example.com/a?x=1&y=2"
+            }
+          },
+          {
+            "message": "Large file",
+            "tone": "warning",
+            "location": {
+              "kind": "file",
+              "value": "src/main.rs",
+              "line": 7,
+              "column": 3
+            }
+          },
+          {
+            "message": "Hidden element",
+            "tone": "info",
+            "location": {
+              "kind": "selector",
+              "value": "main > .card"
+            }
+          },
+          {
+            "message": "Written report",
+            "tone": "info",
+            "location": {
+              "kind": "artifact",
+              "value": "out/report.html"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "options": {
+    "color": "never",
+    "symbols": "ascii",
+    "isTerminal": false,
+    "hyperlinks": false
+  },
+  "expected": "[OK] Links\n\n* Pages (4)\n  - Slow page at https://example.com/a?x=1&y=2\n  - Large file at src/main.rs:7:3\n  - Hidden element at `main > .card`\n  ... 1 more finding(s) (use --details to view all)\n\n"
+}

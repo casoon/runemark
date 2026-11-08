@@ -1,0 +1,48 @@
+{
+  "function": "renderReport",
+  "input": {
+    "schemaVersion": 1,
+    "title": "Audit",
+    "verdict": "failed",
+    "metrics": [
+      {
+        "key": "Errors",
+        "value": "3",
+        "verdict": "failed"
+      },
+      {
+        "key": "Warnings",
+        "value": "0",
+        "verdict": "passed"
+      },
+      {
+        "key": "Skipped",
+        "value": "2",
+        "verdict": "skipped"
+      },
+      {
+        "key": "Score",
+        "value": "71",
+        "verdict": "warning",
+        "trend": "negative",
+        "delta": "-4"
+      },
+      {
+        "key": "Pages",
+        "value": "40",
+        "trend": "neutral",
+        "delta": "+0"
+      },
+      {
+        "key": "Plain",
+        "value": "x"
+      }
+    ]
+  },
+  "options": {
+    "color": "never",
+    "symbols": "ascii",
+    "isTerminal": false
+  },
+  "expected": "[FAIL] Audit\n\n  [FAIL] Errors: 3   [OK] Warnings: 0   [SKIP] Skipped: 2   [WARN] Score: 71 (-4)   Pages: 40 (+0)   Plain: x\n\n"
+}

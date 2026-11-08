@@ -16,8 +16,11 @@ order: 1
 ```sh
 cargo add runemark
 
-# with the terminal progress sink (adds indicatif)
+# with the live progress bar (adds indicatif)
 cargo add runemark --features progress
+
+# with the interactive selection menu (adds libc, Unix only)
+cargo add runemark --features select
 ```
 
 </div>
@@ -53,11 +56,6 @@ a release.
 | Linux x64, glibc 2.17 or newer | `linux-x64-gnu` |
 | Linux x64, musl (Alpine) | `linux-x64-musl` |
 | Linux arm64, glibc 2.17 or newer | `linux-arm64-gnu` |
-
-<Callout type="caution">
-  Use `@casoon/runemark` 0.3.1 or newer. Version 0.3.0 on npm contained only the macOS arm64
-  binary.
-</Callout>
 
 ## Next steps
 

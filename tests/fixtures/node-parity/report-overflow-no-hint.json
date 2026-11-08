@@ -1,0 +1,77 @@
+{
+  "function": "renderReport",
+  "input": {
+    "schemaVersion": 1,
+    "title": "T",
+    "verdict": "warning",
+    "groups": [
+      {
+        "title": "G",
+        "findings": [
+          {
+            "message": "Finding 1",
+            "tone": "warning",
+            "ruleId": "rule/1",
+            "remedy": "Fix 1",
+            "location": {
+              "kind": "file",
+              "value": "a.rs",
+              "line": 1
+            }
+          },
+          {
+            "message": "Finding 2",
+            "tone": "warning",
+            "ruleId": "rule/2",
+            "remedy": "Fix 2",
+            "location": {
+              "kind": "file",
+              "value": "a.rs",
+              "line": 2
+            }
+          },
+          {
+            "message": "Finding 3",
+            "tone": "warning",
+            "ruleId": "rule/3",
+            "remedy": "Fix 3",
+            "location": {
+              "kind": "file",
+              "value": "a.rs",
+              "line": 3
+            }
+          },
+          {
+            "message": "Finding 4",
+            "tone": "warning",
+            "ruleId": "rule/4",
+            "remedy": "Fix 4",
+            "location": {
+              "kind": "file",
+              "value": "a.rs",
+              "line": 4
+            }
+          },
+          {
+            "message": "Finding 5",
+            "tone": "warning",
+            "ruleId": "rule/5",
+            "remedy": "Fix 5",
+            "location": {
+              "kind": "file",
+              "value": "a.rs",
+              "line": 5
+            }
+          }
+        ]
+      }
+    ],
+    "detailsHint": false
+  },
+  "options": {
+    "color": "never",
+    "symbols": "ascii",
+    "isTerminal": false
+  },
+  "expected": "[WARN] T\n\n* G (5)\n  - Finding 1 [rule/1] at a.rs:1\n  - Finding 2 [rule/2] at a.rs:2\n  - Finding 3 [rule/3] at a.rs:3\n  ... 2 more finding(s)\n\n"
+}

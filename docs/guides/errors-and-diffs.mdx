@@ -34,12 +34,13 @@ eprint!("{}", block.render(Console::stderr(ColorMode::Auto)));
 ```js
 const { renderError } = require('@casoon/runemark')
 
+// stderr text: pass stream so `color: 'auto'` checks stderr rather than stdout
 process.stderr.write(renderError({
   heading: 'Required toolchain is unavailable',
   explanation: 'The configured version is not installed.',
   remedy: 'Install the required toolchain:',
   commands: ['toolchain install stable'],
-}))
+}, { stream: 'stderr' }))
 ```
 
 </div>
@@ -48,7 +49,8 @@ process.stderr.write(renderError({
 ## File changes
 
 Generators and fixers can summarise what they wrote. Actions: added, modified, deleted, renamed;
-each change can carry a short delta such as a size.
+each change can carry a short delta such as a size. A change has a single path, so a rename shows
+the path it ended up at (`-> RENAME src/new.rs`), not an old-to-new pair.
 
 <Tabs
   label="Language"

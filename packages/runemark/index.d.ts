@@ -8,27 +8,46 @@ export type ProgressMode = 'auto' | 'always' | 'never'
 export interface ConsoleOptions {
   color?: ColorMode
   symbols?: SymbolTheme
+  /** Overrides the terminal check that `color: 'auto'` makes. Wins over `stream`. */
   isTerminal?: boolean
+  /**
+   * The stream the output will be written to; `color: 'auto'` checks whether
+   * that stream is a terminal. Defaults to `'stdout'`. Pass `'stderr'` for
+   * text you write with `process.stderr.write`.
+   */
+  stream?: 'stdout' | 'stderr'
+  /**
+   * Emit OSC 8 terminal hyperlinks for `url` and `file` locations, independent
+   * of colour. Unset follows the colour decision: links appear exactly where
+   * styling does. `true` with `color: 'never'` gives links without colour,
+   * `false` gives colour without links.
+   */
+  hyperlinks?: boolean
 }
 
 export interface RenderOptions extends ConsoleOptions {
+  /** Columns available for layout. An integer from 0 to 4294967295; 0 means unconstrained. */
   width?: number
 }
 
 export interface LocationInput {
   kind: 'file' | 'url' | 'selector' | 'artifact'
   value: string
+  /** Integer from 0 to 4294967295; only `kind: 'file'` renders it. Other values throw. */
   line?: number
+  /** Integer from 0 to 4294967295; needs `line`, otherwise the input throws. */
   column?: number
 }
 
 export interface BadgeInput {
   label: string
+  /** Defaults to `'info'`. */
   tone?: Tone
 }
 
 export interface FindingInput {
   message: string
+  /** Defaults to `'warning'`. */
   tone?: Tone
   location?: LocationInput
   ruleId?: string
@@ -40,6 +59,7 @@ export interface FindingInput {
 export interface FindingGroupInput {
   title: string
   findings?: FindingInput[]
+  /** Findings in the whole group, when `findings` is only a sample. Integer from 0 to 4294967295. */
   totalCount?: number
   advisory?: boolean
 }
@@ -55,7 +75,13 @@ export interface MetricInput {
    */
   verdict?: Verdict
   tone?: Tone
+  /**
+   * Colours the `delta` text. An unknown value throws. Without a `delta` a
+   * valid trend is accepted and renders nothing; with a `delta` and no trend,
+   * `'neutral'` applies.
+   */
   trend?: 'positive' | 'negative' | 'neutral'
+  /** Shown in parentheses after the value, for example `+3%`. */
   delta?: string
 }
 
@@ -63,6 +89,23 @@ export interface NextStepInput {
   text: string
   command?: string
 }
+
+/** A note under the verdict line, rendered as `heading: item, item`. */
+export interface ScopeNoteInput {
+  heading: string
+  items: string[]
+}
+
+/**
+ * A status note under the verdict line. `kind` selects the variant; `value` is
+ * required exactly where shown and rejected on `'dry-run'`.
+ */
+export type VocabularyInput =
+  | { kind: 'dry-run' }
+  | { kind: 'empty-state'; value: string }
+  | { kind: 'baseline'; value: string }
+  /** Integer from 0 to 4294967295. */
+  | { kind: 'truncated'; value: number }
 
 /** Versioned plain-object contract consumed by the native binding. */
 export interface ReportInput {
@@ -72,7 +115,22 @@ export interface ReportInput {
   metrics?: MetricInput[]
   groups?: FindingGroupInput[]
   nextSteps?: NextStepInput[]
+  scopeNotes?: ScopeNoteInput[]
+  vocabulary?: VocabularyInput[]
+  /**
+   * Finding count from which a summary of the most frequent rules is shown.
+   * An integer from 0 to 4294967295; `false` turns the summary off. Defaults
+   * to 20.
+   */
+  topIssuesThreshold?: number | false
+  /**
+   * Hint in parentheses after the compact "... N more finding(s)" line. A
+   * string replaces it, `false` drops the parenthetical. Defaults to
+   * `'use --details to view all'`.
+   */
+  detailsHint?: string | false
   detailLevel?: DetailLevel
+  /** Findings shown per group at the compact level. Integer from 0 to 4294967295; defaults to 3. */
   maxCompactSamples?: number
 }
 
@@ -91,7 +149,8 @@ export interface DiffInput {
   }>
 }
 
-export interface ProgressOptions extends ConsoleOptions {
+/** Progress always writes to stderr, so it takes no `stream` option. */
+export interface ProgressOptions extends Omit<ConsoleOptions, 'stream' | 'hyperlinks'> {
   mode?: ProgressMode
 }
 
@@ -123,6 +182,7 @@ export class RunemarkReport {
 
 export class RunemarkProgress {
   constructor(options?: ProgressOptions)
+  /** `total` and `position` are integers from 0 to 4294967295; anything else throws. */
   start(total: number, message: string): void
   advance(position: number, message: string): void
   notice(tone: Tone, message: string): void

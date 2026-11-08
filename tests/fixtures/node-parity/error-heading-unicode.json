@@ -1,0 +1,12 @@
+{
+  "function": "renderError",
+  "input": {
+    "heading": "Config invalid"
+  },
+  "options": {
+    "color": "never",
+    "symbols": "unicode",
+    "isTerminal": false
+  },
+  "expected": "✖ Config invalid\n"
+}

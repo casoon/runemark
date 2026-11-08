@@ -1,5 +1,6 @@
 ---
 import { readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import {
   Badge,
   Badges,
@@ -29,6 +30,18 @@ const latestRelease = config.changelog
       (r) => r.version.toLowerCase() !== 'unreleased'
     )
   : undefined;
+
+// The facts below come from the manifests, so they cannot drift from the release.
+const repoRoot = resolve(process.cwd(), '..');
+const rustVersion = (await readFile(join(repoRoot, 'Cargo.toml'), 'utf8')).match(
+  /^rust-version\s*=\s*"([^"]+)"/m
+)?.[1];
+if (!rustVersion) throw new Error('Cargo.toml has no rust-version');
+const nodePackage = JSON.parse(
+  await readFile(join(repoRoot, 'packages/runemark/package.json'), 'utf8')
+);
+const nodeVersion = nodePackage.engines.node.replace(/\D/g, '');
+const nodePlatforms = nodePackage.napi.targets.length;
 
 const rust = `use runemark::{ColorMode, Console, Tone, Verdict};
 
@@ -65,8 +78,8 @@ process.stdout.write(renderReport({
       <Badge>MIT</Badge>
       <Badge>crates.io</Badge>
       <Badge>npm</Badge>
-      <Badge>Rust 1.85+</Badge>
-      <Badge>Node 20+</Badge>
+      <Badge>Rust {rustVersion}+</Badge>
+      <Badge>Node {nodeVersion}+</Badge>
     </Badges>
     <img
       slot="output"
@@ -74,15 +87,15 @@ process.stdout.write(renderReport({
       src={heroCast.src}
       width={heroCast.width}
       height={heroCast.height}
-      alt="A terminal running cargo run --example hero_demo: a progress bar fills as four pages are audited, then a site audit report appears with its metrics, two accessibility findings and a next step."
+      alt="A terminal running cargo run --example hero_demo --features progress: a progress bar fills as four pages are audited, then a site audit report appears with its metrics, two accessibility findings and a next step."
     />
   </Hero>
 
   <Facts
     items={[
       { value: '1', label: 'required dependency (unicode-width)' },
-      { value: '5', label: 'prebuilt Node platforms' },
-      { value: '1.85', label: 'minimum Rust version' },
+      { value: String(nodePlatforms), label: 'prebuilt Node platforms' },
+      { value: rustVersion, label: 'minimum Rust version' },
       { value: '2', label: 'ecosystems, one renderer' },
     ]}
   />
@@ -103,7 +116,7 @@ process.stdout.write(renderReport({
       },
       {
         title: 'Safe with untrusted text',
-        body: 'Control characters in messages, paths and URLs are neutralised; hyperlinks are only emitted for http and https targets.',
+        body: 'Control characters in messages, paths and URLs are neutralised; hyperlinks are only emitted for http and https URLs and for file paths the tool resolves itself.',
       },
     ]}
   />
@@ -126,7 +139,7 @@ process.stdout.write(renderReport({
   </Spotlight>
 
   <BuildOutput
-    caption="Every terminal on this site is rendered by @casoon/runemark during the build – the same renderer as the crate. No screenshots."
+    caption="These terminals and the ones in the showcase are rendered by @casoon/runemark during the build – the same renderer as the crate. Only the animation at the top is a recording, of the hero_demo example."
     file="site/src/showcase.ts"
   >
     <Terminal ansi={ansi['report-detailed']} />
