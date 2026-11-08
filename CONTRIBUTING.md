@@ -59,9 +59,10 @@ boundaries:
 ## Releasing
 
 1. Bump the version in `Cargo.toml`, `bindings/node/Cargo.toml` (package and
-   `runemark` dependency) and `packages/runemark/package.json`, and date the
-   release in `CHANGELOG.md`. `node scripts/check-release-metadata.mjs` checks
-   that they agree.
+   `runemark` dependency) and `packages/runemark/package.json`, refresh
+   `packages/runemark/package-lock.json` (`npm install --package-lock-only`
+   there), and date the release in `CHANGELOG.md`.
+   `node scripts/check-release-metadata.mjs` checks that they agree.
 2. After merging to `main`, optionally run `gh workflow run release.yml --ref main`
    to build and smoke-test all native binaries before tagging (dry run, nothing
    is published).

@@ -31,11 +31,21 @@ const nodeDepVersion = nodeDepMatch[1]
 const pkgJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'packages/runemark/package.json'), 'utf8'))
 const pkgVersion = pkgJson.version
 
+// 3b. The lock file repeats the package version twice. `npm ci` tolerates a
+// stale value, so it drifted unnoticed from 0.3.3 to 0.9.1.
+const pkgLock = JSON.parse(
+  fs.readFileSync(path.join(rootDir, 'packages/runemark/package-lock.json'), 'utf8'),
+)
+const lockVersion = pkgLock.version
+const lockRootVersion = pkgLock.packages?.['']?.version
+
 console.log(`Checking version parity:`)
 console.log(`  Root Cargo.toml:              ${rootVersion}`)
 console.log(`  bindings/node/Cargo.toml:     ${nodeVersion}`)
 console.log(`  bindings/node runemark dep:   ${nodeDepVersion}`)
 console.log(`  packages/runemark/package.json: ${pkgVersion}`)
+console.log(`  package-lock.json:            ${lockVersion}`)
+console.log(`  package-lock.json packages[""]: ${lockRootVersion}`)
 
 assert.equal(nodeVersion, rootVersion, 'bindings/node version must match root crate version')
 assert.equal(
@@ -44,6 +54,16 @@ assert.equal(
   "bindings/node's runemark dependency must match root crate version",
 )
 assert.equal(pkgVersion, rootVersion, 'packages/runemark version must match root crate version')
+assert.equal(
+  lockVersion,
+  rootVersion,
+  'packages/runemark/package-lock.json version must match root crate version (run `npm install --package-lock-only`)',
+)
+assert.equal(
+  lockRootVersion,
+  rootVersion,
+  'packages/runemark/package-lock.json packages[""] version must match root crate version (run `npm install --package-lock-only`)',
+)
 
 // The project page is not checked here. Since pages-theme 0.8.0 it derives the
 // version from these manifests itself, so there is no fourth copy to drift.
