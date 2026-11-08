@@ -40,6 +40,14 @@ let menu = Menu::new()
 `Item::id` is the application's own identifier and is what selection returns. The label is
 what the user sees; descriptions form a second column that lines up across every group.
 
+**Ids must be unique within a menu.** Ticking is by id, so two entries sharing one tick
+together, and `Menu::run_multi` lists the id twice in `Picked::Chosen`.
+
+`Item`, `Group` and `Hint` are `#[non_exhaustive]`: build them with `new` and the builder
+methods rather than a struct literal, so a field can be added without a breaking release.
+`Outcome` and `Picked` are exhaustive on purpose — a caller matches them to decide what
+happens next, and a new case should be a compile error rather than a silent fallthrough.
+
 ## Running it
 
 ```rust
@@ -72,6 +80,8 @@ rest of the crate: the application owns the decision about its own streams.
 | Key | Effect |
 | --- | --- |
 | `↑` `↓` | Move the cursor, wrapping at both ends |
+| `Home` `End` | Jump to the first or last entry |
+| `PgUp` `PgDn` | Move ten entries, stopping at the ends instead of wrapping |
 | `←` `→`, `Tab`, `Shift-Tab` | Switch groups, with `Layout::Tabs` |
 | `1`–`9` | Jump to that group, with `Layout::Tabs` |
 | `Enter` | Select, returning `Outcome::Selected` |
@@ -80,10 +90,18 @@ rest of the crate: the application owns the decision about its own streams.
 | `Esc`, `q` | `Outcome::Cancelled` |
 | `Ctrl-C` | `Outcome::Cancelled` |
 
+`Home`, `End`, `PgUp` and `PgDn` work in both layouts and inside a filter, on the entries
+currently shown. Letters such as `j` and `k` are deliberately not cursor keys: a hint key wins
+over the built-ins, and they would collide with the hints a menu binds.
+
 A hint key wins over the built-in `q`, so a menu is free to bind `q` itself. `/` is reserved
 for the filter and cannot be bound. A tabbed menu has given its digits away: they reach its
 groups, and a hint bound to one is not seen there — the tab is the one of the two the user
 can see on screen.
+
+Two things follow from raw mode. `Ctrl-Z` cannot suspend the menu: raw mode turns off the
+terminal's signal keys, so it arrives as a key the menu ignores. And keys typed before the menu
+opened are discarded, so a stray `Enter` does not select the first entry.
 
 ## Picking several
 
@@ -283,9 +301,16 @@ mark what is out of view. `Layout::Tabs` is the other answer to the same problem
 whose groups mean something: it pages by group instead of scrolling past every one of them. The window moves the least amount that keeps the cursor visible, so
 short cursor moves do not slide the whole screen.
 
-The size comes from the terminal itself, re-read on every frame, so resizing the window
-while the menu is open is picked up without a `SIGWINCH` handler. A terminal that reports no
-height gets the whole menu.
+The size comes from the terminal itself and is re-read every time a frame is drawn. There is
+no `SIGWINCH` handler, and the menu waits on a key between frames, so **a resize is picked up on
+the next keypress**, not while the menu sits idle. The terminal may reflow the frame already on
+screen in the meantime, so the redraw that follows can leave a stale line behind; the next key
+redraws it cleanly. A terminal that reports no height gets the whole menu.
+
+Lines that cannot be cut to fit are shortened, not left to wrap: the active tab, the heading
+note, and a footer key's label all give way before the line does. A terminal shorter than the
+heading and footer still gets one row of entries, and with fewer than three rows to spare the
+`↑ N more` / `↓ N more` lines are left out so the rows can have the room.
 
 `Menu::render` is neither windowed nor shortened. A pipe or a file has no height or width to
 run out of, and cutting there would lose information for no reason.
@@ -308,6 +333,11 @@ which is what keeps a menu safe in a pipeline and in CI.
 `Menu::render` needs no feature at all. It is plain formatting with no cursor and no terminal
 control, and it is what a non-interactive caller shows instead.
 
+Like the rest of the crate, the menu follows the console's `SymbolTheme`. With the ASCII theme —
+which is what a console with colour off gets — `Menu::render` and the interactive menu draw `>`,
+`^` / `v`, `<>`, `...`, `|` and `-` instead of `›`, `↑` / `↓`, `←→`, `…`, `│` and `─`, so a pipe or
+a log file receives plain ASCII.
+
 ## Terminal restoration
 
 Raw mode is held by a guard that restores the terminal when it goes out of scope, on every
@@ -321,7 +351,7 @@ a key event and is reported as `Outcome::Cancelled`.
 ## Why not a terminal crate
 
 The surface a menu needs is small: raw mode, `\x1b[?25l` / `\x1b[?25h` for the cursor,
-`\x1b[{n}F` and `\x1b[J` for redrawing in place, and six keys. Pulling in a cross-platform
+`\x1b[{n}F` and `\x1b[J` for redrawing in place, and a handful of keys. Pulling in a cross-platform
 terminal stack for that costs far more than it returns — 28 packages against the two runemark
 now has with the feature on.
 
