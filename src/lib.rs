@@ -34,3 +34,24 @@ pub use report::{
 };
 pub use select::{Group, Hint, Item, Layout, Menu, Outcome, Picked, SelectMode};
 pub use verdict::Verdict;
+
+// Compile the README and the guide samples as doctests. `docs/` is not part of the
+// published package, so these only exist for `cargo test --doc` in the repository.
+// The README carries a `select` sample, hence the feature gate.
+#[cfg(all(doctest, feature = "select"))]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
+#[cfg(doctest)]
+mod guide_doctests {
+    #[doc = include_str!("../docs/getting-started/quickstart.mdx")]
+    struct Quickstart;
+    #[doc = include_str!("../docs/guides/colour-policy.md")]
+    struct ColourPolicy;
+    #[doc = include_str!("../docs/guides/errors-and-diffs.mdx")]
+    struct ErrorsAndDiffs;
+    #[doc = include_str!("../docs/guides/progress.md")]
+    struct Progress;
+    #[doc = include_str!("../docs/guides/reports.mdx")]
+    struct Reports;
+}

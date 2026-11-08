@@ -74,14 +74,14 @@ rendering in the host CLI. runemark never defines domain-specific finding or
 machine-report types.
 
 ```rust
-use runemark::{Finding, FindingGroup, Report, Tone, Verdict};
+use runemark::{ColorMode, Console, Finding, FindingGroup, Report, Tone, Verdict};
 
 let report = Report::new("Site audit", Verdict::Warning).add_group(
     FindingGroup::new("Accessibility")
         .add_finding(Finding::new(Tone::Warning, "Image has no text alternative")),
 );
 
-print!("{}", report.render(runemark::Console::stdout(runemark::ColorMode::Auto)));
+print!("{}", report.render(Console::stdout(ColorMode::Auto)));
 ```
 
 ### Metrics as outcomes
@@ -107,7 +107,7 @@ finding messages with a hanging indent.
 ```rust
 use runemark::{ColorMode, Console, RenderOptions, Report, Verdict};
 
-# let report = Report::new("Site audit", Verdict::Info);
+let report = Report::new("Site audit", Verdict::Info);
 
 let output = report.render_with_options(
     Console::stdout(ColorMode::Auto),
@@ -149,26 +149,28 @@ fallback a pipeline takes, so callers need no `cfg`.
 use runemark::{ColorMode, Console, Group, Hint, Item, Menu, Outcome, SelectMode};
 use std::io::IsTerminal;
 
-let menu = Menu::new()
-    .with_heading("casoon.dev")
-    .with_note("pnpm")
-    .add_group(
-        Group::new("Development")
-            .add_item(Item::new("dev", "dev").with_description("Start the site")),
-    )
-    .add_hint(Hint::new('U', "Updates"));
+fn main() -> std::io::Result<()> {
+    let menu = Menu::new()
+        .with_heading("casoon.dev")
+        .with_note("pnpm")
+        .add_group(
+            Group::new("Development")
+                .add_item(Item::new("dev", "dev").with_description("Start the site")),
+        )
+        .add_hint(Hint::new('U', "Updates"));
 
-let outcome = menu.run(
-    Console::stderr(ColorMode::Auto),
-    SelectMode::Auto,
-    std::io::stderr().is_terminal(),
-)?;
+    let outcome = menu.run(
+        Console::stderr(ColorMode::Auto),
+        SelectMode::Auto,
+        std::io::stderr().is_terminal(),
+    )?;
 
-// Without a terminal the menu does not run and never blocks; render it instead.
-if outcome == Outcome::Unavailable {
-    print!("{}", menu.render(Console::stdout(ColorMode::Auto)));
+    // Without a terminal the menu does not run and never blocks; render it instead.
+    if outcome == Outcome::Unavailable {
+        print!("{}", menu.render(Console::stdout(ColorMode::Auto)));
+    }
+    Ok(())
 }
-# Ok::<(), std::io::Error>(())
 ```
 
 `/` filters the menu as you type, ranking names above descriptions and tight
