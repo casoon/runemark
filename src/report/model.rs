@@ -103,8 +103,17 @@ impl Badge {
         Self::new("LOST", Tone::Error)
     }
 
+    /// Writes the badge directly to a writer.
+    pub fn write_to(
+        &self,
+        console: crate::color::Console,
+        writer: &mut (impl std::io::Write + ?Sized),
+    ) -> std::io::Result<()> {
+        console.write_paint(self.tone, format!("[{}]", self.label), writer)
+    }
+
     pub fn render(&self, console: crate::color::Console) -> String {
-        console.paint(self.tone, format!("[{}]", self.label))
+        crate::internal::collect_to_string(|buf| self.write_to(console, buf))
     }
 }
 

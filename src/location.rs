@@ -2,6 +2,7 @@
 
 use crate::color::{Console, Tone, sanitize_visible_text};
 use std::fmt::{self, Display};
+use std::io::Write;
 use std::path::PathBuf;
 
 /// A location within a file, document, or remote resource.
@@ -69,12 +70,21 @@ impl Location {
     /// Renders the location, emitting OSC 8 terminal hyperlinks when the console
     /// has hyperlinks enabled and ANSI styles when it has colour enabled.
     pub fn render(&self, console: Console) -> String {
+        crate::internal::collect_to_string(|buf| self.write_to(console, buf))
+    }
+
+    /// Writes the location directly to a writer, like [`Location::render`].
+    pub fn write_to(
+        &self,
+        console: Console,
+        writer: &mut (impl Write + ?Sized),
+    ) -> std::io::Result<()> {
         let plain = self.to_plain_string();
         if !console.color_enabled() && !console.hyperlinks_enabled() {
-            return plain;
+            return write!(writer, "{plain}");
         }
 
-        match self {
+        let rendered = match self {
             Self::File { path, line, column } => {
                 let abs_path = path.canonicalize().unwrap_or_else(|_| {
                     if path.is_absolute() {
@@ -114,7 +124,8 @@ impl Location {
             }
             Self::Selector(sel) => console.paint(Tone::Info, format!("`{sel}`")),
             Self::Artifact(path) => console.paint(Tone::Success, path.display()),
-        }
+        };
+        writer.write_all(rendered.as_bytes())
     }
 }
 
