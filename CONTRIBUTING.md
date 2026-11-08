@@ -80,8 +80,11 @@ boundaries:
    (`npm run fetch:binaries`) and runs `npm publish`; `prepublishOnly` refuses
    to publish unless every binary the package ships matches the release
    checksums and the host binary passes the smoke test.
-   Which binaries those are is `scripts/release-binaries.mjs`, not this list —
-   it was six until x86_64 macOS was dropped.
+   Which binaries those are is `napi.targets` in
+   `packages/runemark/package.json`, not this list — it was six until x86_64
+   macOS was dropped. `scripts/release-binaries.mjs` derives its list from it,
+   and `scripts/check-release-metadata.mjs` checks the release build matrix
+   against it.
 
 ## Reporting issues
 

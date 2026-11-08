@@ -159,6 +159,7 @@ jobs:
     needs: confirm-published
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
       - name: Download native binaries
         uses: actions/download-artifact@v4
         with:
@@ -169,7 +170,8 @@ jobs:
         working-directory: dist
         run: |
           ls -la
-          test "$(ls runemark.*.node | wc -l)" -eq 5
+          expected="$(node -p "require('../packages/runemark/package.json').napi.targets.length")"
+          test "$(ls runemark.*.node | wc -l)" -eq "$expected"
           sha256sum runemark.*.node > SHA256SUMS
           cat SHA256SUMS
       - name: Create GitHub release
@@ -197,7 +199,7 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       # Trusted publishing needs npm 11.5 or newer.
-      - run: npm install -g npm@latest
+      - run: npm install -g npm@11
       - name: Install dependencies
         working-directory: packages/runemark
         run: npm ci
@@ -214,3 +216,6 @@ jobs:
       - name: Publish
         working-directory: packages/runemark
         run: npm publish --access public
+        env:
+          # prepublishOnly checks the build provenance attestations with `gh`.
+          GH_TOKEN: ${{ github.token }}

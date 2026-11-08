@@ -3,6 +3,7 @@ import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { binaries } from '../packages/runemark/scripts/release-binaries.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
@@ -63,6 +64,28 @@ assert.equal(
   lockRootVersion,
   rootVersion,
   'packages/runemark/package-lock.json packages[""] version must match root crate version (run `npm install --package-lock-only`)',
+)
+
+// 3c. The platform list. `napi.targets` is the only list; the release build
+// matrix has to build exactly those, and the binaries the publish step expects
+// (derived from the same targets) have to be one file per target.
+const targets = pkgJson.napi.targets
+const releaseWorkflow = fs.readFileSync(path.join(rootDir, '.github/workflows/release.yml'), 'utf8')
+const matrixTargets = [...releaseWorkflow.matchAll(/^\s+- target: (\S+)\s*$/gm)].map((m) => m[1])
+
+console.log(`  napi.targets:                 ${targets.length}`)
+console.log(`  release.yml build matrix:     ${matrixTargets.length}`)
+console.log(`  release binaries:             ${binaries.length}`)
+
+assert.deepEqual(
+  [...matrixTargets].sort(),
+  [...targets].sort(),
+  'release.yml build matrix targets must match napi.targets in packages/runemark/package.json',
+)
+assert.equal(
+  new Set(binaries).size,
+  targets.length,
+  'release-binaries.mjs must derive one distinct binary per napi.targets entry',
 )
 
 // The project page is not checked here. Since pages-theme 0.8.0 it derives the
