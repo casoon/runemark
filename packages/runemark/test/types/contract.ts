@@ -43,6 +43,7 @@ const consoleOpts: ConsoleOptions = {
   color: colorMode,
   symbols: symbolTheme,
   isTerminal: true,
+  stream: 'stderr',
 }
 
 const renderOpts: RenderOptions = {

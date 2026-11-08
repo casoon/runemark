@@ -17,6 +17,8 @@ Consumers work with plain objects and strings, never with Rust types or builders
 - The string literals in `index.d.ts` are the contract. The native binding validates tones,
   verdicts, locations and file actions, so invalid input fails at the package boundary instead of
   rendering a partial report.
+- `color: 'auto'` checks stdout unless `stream: 'stderr'` is passed on the console, render, error
+  and diff options; an explicit `isTerminal` wins over both. Progress always uses stderr.
 - A metric `trend` is validated even without a `delta`: an unknown value throws, a valid one
   without a `delta` is accepted and renders nothing, as in the Rust core.
 - Rust enums, public fields and builder internals are deliberately not exported.

@@ -205,3 +205,32 @@ test('metric trend is validated with and without a delta', () => {
   assert.match(render({ key: 'k', value: 'v', trend: 'positive' }), /^ {2}k: v$/m)
   assert.match(render({ key: 'k', value: 'v', trend: 'positive', delta: '+1' }), /k: v \(\+1\)/)
 })
+
+test('stream selects what auto checks, and an explicit isTerminal wins', () => {
+  const noColor = process.env.NO_COLOR
+  delete process.env.NO_COLOR
+  try {
+    for (const stream of [undefined, 'stdout', 'stderr']) {
+      const options = { color: 'auto', stream, isTerminal: true }
+      assert.match(new RunemarkConsole(options).error('x'), /\x1b\[/)
+      assert.match(renderError({ heading: 'x' }, options), /\x1b\[/)
+      assert.match(renderDiff({ changes: [{ action: 'added', path: 'a' }] }, options), /\x1b\[/)
+      assert.match(renderReport({ title: 'T', verdict: Verdict.Failed }, options), /\x1b\[/)
+
+      const off = { color: 'auto', stream, isTerminal: false }
+      assert.equal(new RunemarkConsole(off).error('x'), 'x')
+    }
+  } finally {
+    if (noColor !== undefined) process.env.NO_COLOR = noColor
+  }
+})
+
+test('stream rejects a value that is not stdout or stderr', () => {
+  assert.throws(() => new RunemarkConsole({ stream: 'stdin' }), /invalid stream: stdin/)
+  assert.throws(() => renderError({ heading: 'x' }, { stream: 'file' }), /invalid stream: file/)
+  assert.throws(() => renderDiff({ changes: [] }, { stream: 'file' }), /invalid stream: file/)
+  assert.throws(
+    () => renderReport({ title: 'T', verdict: Verdict.Passed }, { stream: 'file' }),
+    /invalid stream: file/,
+  )
+})

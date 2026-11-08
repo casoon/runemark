@@ -17,6 +17,7 @@ pub struct JsConsoleOptions {
     pub color: Option<String>,
     pub symbols: Option<String>,
     pub is_terminal: Option<bool>,
+    pub stream: Option<String>,
 }
 
 #[napi(object)]
@@ -24,6 +25,7 @@ pub struct JsRenderOptions {
     pub color: Option<String>,
     pub symbols: Option<String>,
     pub is_terminal: Option<bool>,
+    pub stream: Option<String>,
     pub width: Option<u32>,
 }
 
@@ -191,6 +193,7 @@ impl NativeProgress {
             options.color.as_deref(),
             options.symbols.as_deref(),
             Some(is_terminal),
+            None,
         )?;
         let mode = match options.mode.as_deref().unwrap_or("auto") {
             "auto" => ProgressMode::Auto,
@@ -260,11 +263,13 @@ fn console_from_options(options: Option<JsConsoleOptions>) -> Result<Console> {
         color: None,
         symbols: None,
         is_terminal: None,
+        stream: None,
     });
     console_from_parts(
         options.color.as_deref(),
         options.symbols.as_deref(),
         options.is_terminal,
+        options.stream.as_deref(),
     )
 }
 
@@ -273,12 +278,14 @@ fn render_context(options: Option<JsRenderOptions>) -> Result<(Console, RenderOp
         color: None,
         symbols: None,
         is_terminal: None,
+        stream: None,
         width: None,
     });
     let console = console_from_parts(
         options.color.as_deref(),
         options.symbols.as_deref(),
         options.is_terminal,
+        options.stream.as_deref(),
     )?;
     let layout = options
         .width
@@ -291,6 +298,7 @@ fn console_from_parts(
     color: Option<&str>,
     symbols: Option<&str>,
     is_terminal: Option<bool>,
+    stream: Option<&str>,
 ) -> Result<Console> {
     let color = match color.unwrap_or("auto") {
         "auto" => ColorMode::Auto,
@@ -298,8 +306,13 @@ fn console_from_parts(
         "never" => ColorMode::Never,
         value => return Err(invalid_value("color mode", value)),
     };
-    let is_terminal =
-        is_terminal.unwrap_or_else(|| std::io::IsTerminal::is_terminal(&std::io::stdout()));
+    // `auto` checks the stream the caller writes to; an explicit `isTerminal` wins.
+    let stream_is_terminal = match stream.unwrap_or("stdout") {
+        "stdout" => std::io::IsTerminal::is_terminal(&std::io::stdout()),
+        "stderr" => std::io::IsTerminal::is_terminal(&std::io::stderr()),
+        value => return Err(invalid_value("stream", value)),
+    };
+    let is_terminal = is_terminal.unwrap_or(stream_is_terminal);
     let console = Console::new(color, is_terminal);
     match symbols {
         None => Ok(console),

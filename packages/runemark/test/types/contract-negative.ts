@@ -87,3 +87,9 @@ new RunemarkProgress({ total: 10 })
 
 // @ts-expect-error Console constructor does not accept unknown options
 new RunemarkConsole({ unknown: true })
+
+// @ts-expect-error Progress always writes to stderr and takes no stream option
+new RunemarkProgress({ stream: 'stderr' })
+
+// @ts-expect-error Invalid stream literal
+new RunemarkConsole({ stream: 'stdin' })

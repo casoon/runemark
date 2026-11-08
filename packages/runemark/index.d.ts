@@ -8,7 +8,14 @@ export type ProgressMode = 'auto' | 'always' | 'never'
 export interface ConsoleOptions {
   color?: ColorMode
   symbols?: SymbolTheme
+  /** Overrides the terminal check that `color: 'auto'` makes. Wins over `stream`. */
   isTerminal?: boolean
+  /**
+   * The stream the output will be written to; `color: 'auto'` checks whether
+   * that stream is a terminal. Defaults to `'stdout'`. Pass `'stderr'` for
+   * text you write with `process.stderr.write`.
+   */
+  stream?: 'stdout' | 'stderr'
 }
 
 export interface RenderOptions extends ConsoleOptions {
@@ -97,7 +104,8 @@ export interface DiffInput {
   }>
 }
 
-export interface ProgressOptions extends ConsoleOptions {
+/** Progress always writes to stderr, so it takes no `stream` option. */
+export interface ProgressOptions extends Omit<ConsoleOptions, 'stream'> {
   mode?: ProgressMode
 }
 

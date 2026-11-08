@@ -33,7 +33,8 @@ process.stdout.write(`${text}\n`)
 ```
 
 Use `color: 'never'` for snapshots and plain logs. `color: 'auto'` is
-TTY-aware and is the default.
+TTY-aware and is the default. It checks stdout; if you write to stderr, pass
+`stream: 'stderr'` (an explicit `isTerminal` wins over both).
 
 ## Reports
 
@@ -101,7 +102,7 @@ process.stderr.write(renderError({
   heading: 'Browser executable not found',
   explanation: 'The audit needs a local browser.',
   commands: ['npx playwright install chromium'],
-}, { color: 'auto' }))
+}, { color: 'auto', stream: 'stderr' }))
 
 process.stdout.write(renderDiff({
   changes: [
