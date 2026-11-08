@@ -123,6 +123,12 @@ export interface ReportInput {
    * to 20.
    */
   topIssuesThreshold?: number | false
+  /**
+   * Hint in parentheses after the compact "... N more finding(s)" line. A
+   * string replaces it, `false` drops the parenthetical. Defaults to
+   * `'use --details to view all'`.
+   */
+  detailsHint?: string | false
   detailLevel?: DetailLevel
   /** Findings shown per group at the compact level. Integer from 0 to 4294967295; defaults to 3. */
   maxCompactSamples?: number

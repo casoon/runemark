@@ -48,6 +48,7 @@ consumer needs to render a report, not parity for its own sake.
 | `ScopeNote`, `Report::add_scope_note` | `scopeNotes` | Supported |
 | `Vocabulary`, `Report::add_vocabulary` | `vocabulary`, a tagged union on `kind` | Supported |
 | `Report::top_issues_threshold` | `topIssuesThreshold` (`false` turns the summary off) | Supported |
+| `Report::with_details_hint`, `details_hint` | `detailsHint` (a string replaces the hint, `false` drops it) | Supported |
 | `ErrorBlock` | `renderError`, `ErrorBlockInput` | Supported |
 | `DiffBlock`, `FileChange`, `FileAction` | `renderDiff`, `DiffInput` | Supported |
 | `ProgressMode`, `TerminalProgress` | `RunemarkProgress`, `createProgress`, `mode` | Supported |

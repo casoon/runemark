@@ -109,6 +109,9 @@ pub struct JsReportInput {
     pub vocabulary: Option<Vec<JsVocabulary>>,
     /// A number sets the threshold, `false` disables the summary.
     pub top_issues_threshold: Option<Either<f64, bool>>,
+    /// A string replaces the hint after the compact "more findings" line,
+    /// `false` drops it.
+    pub details_hint: Option<Either<String, bool>>,
     pub detail_level: Option<String>,
     pub max_compact_samples: Option<f64>,
 }
@@ -423,6 +426,17 @@ fn report_from_input(input: JsReportInput) -> Result<Report> {
             ));
         }
     }
+    match input.details_hint {
+        None => {}
+        Some(Either::A(hint)) => report = report.with_details_hint(Some(hint)),
+        Some(Either::B(false)) => report = report.with_details_hint(None),
+        Some(Either::B(true)) => {
+            return Err(Error::new(
+                Status::InvalidArg,
+                "invalid detailsHint: true; expected a string or false",
+            ));
+        }
+    }
     Ok(report)
 }
 
@@ -733,6 +747,7 @@ mod tests {
             scope_notes: None,
             vocabulary: None,
             top_issues_threshold: None,
+            details_hint: None,
             detail_level: None,
             max_compact_samples: None,
         })
@@ -788,6 +803,7 @@ mod tests {
                 },
             ]),
             top_issues_threshold: Some(Either::A(7.0)),
+            details_hint: Some(Either::A("use --verbose".into())),
             detail_level: Some("detailed".into()),
             max_compact_samples: Some(5.0),
         })
@@ -801,6 +817,36 @@ mod tests {
             vec![Vocabulary::DryRun, Vocabulary::Truncated(5)]
         );
         assert_eq!(report.top_issues_threshold, Some(7));
+        assert_eq!(report.details_hint.as_deref(), Some("use --verbose"));
+    }
+
+    #[test]
+    fn test_details_hint_default_false_and_invalid() {
+        let input = |details_hint| JsReportInput {
+            schema_version: None,
+            title: "T".into(),
+            verdict: "passed".into(),
+            metrics: None,
+            groups: None,
+            next_steps: None,
+            scope_notes: None,
+            vocabulary: None,
+            top_issues_threshold: None,
+            details_hint,
+            detail_level: None,
+            max_compact_samples: None,
+        };
+        let hint = |value| report_from_input(input(value)).unwrap().details_hint;
+        assert_eq!(hint(None).as_deref(), Some("use --details to view all"));
+        assert_eq!(hint(Some(Either::B(false))), None);
+        assert_eq!(
+            hint(Some(Either::A("use --verbose".into()))).as_deref(),
+            Some("use --verbose")
+        );
+
+        let err = report_from_input(input(Some(Either::B(true)))).unwrap_err();
+        assert_eq!(err.status, Status::InvalidArg);
+        assert!(err.to_string().contains("invalid detailsHint: true"));
     }
 
     #[test]
@@ -822,6 +868,7 @@ mod tests {
             scope_notes: None,
             vocabulary: None,
             top_issues_threshold: None,
+            details_hint: None,
             detail_level: None,
             max_compact_samples: None,
         };
@@ -878,6 +925,7 @@ mod tests {
             scope_notes: None,
             vocabulary: None,
             top_issues_threshold: None,
+            details_hint: None,
             detail_level: None,
             max_compact_samples: None,
         })

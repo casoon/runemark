@@ -300,6 +300,18 @@ test('compact level samples findings, detailed level shows every remedy', () => 
   assert.doesNotMatch(detailed, /more finding\(s\)/)
 })
 
+test('detailsHint defaults, replaces the hint or drops it', () => {
+  const render = (extra = {}) =>
+    renderReport(reportWith({ findings: sampleFindings(5) }, extra), plain)
+
+  assert.match(render(), /\.\.\. 2 more finding\(s\) \(use --details to view all\)\n/)
+  assert.match(render({ detailsHint: 'use --verbose' }), /\.\.\. 2 more finding\(s\) \(use --verbose\)\n/)
+  assert.match(render({ detailsHint: false }), /\.\.\. 2 more finding\(s\)\n/)
+  assert.doesNotMatch(render({ detailsHint: false }), /use --details/)
+  assert.throws(() => render({ detailsHint: true }), /invalid detailsHint: true/)
+  assert.throws(() => render({ detailsHint: 3 }), /detailsHint/)
+})
+
 test('maxCompactSamples bounds the compact sample', () => {
   const output = renderReport(reportWith({ findings: sampleFindings(5) }, { maxCompactSamples: 1 }), plain)
   assert.match(output, /Finding 1/)
