@@ -125,4 +125,11 @@ if (process.env.GITHUB_REF_TYPE === 'tag') {
   )
 }
 
+// The npm package ships its own copy of the licence; the registry page reads it from there.
+assert.equal(
+  fs.readFileSync(path.join(rootDir, 'packages/runemark/LICENSE'), 'utf8'),
+  fs.readFileSync(path.join(rootDir, 'LICENSE'), 'utf8'),
+  'packages/runemark/LICENSE must match the root LICENSE (copy it when the licence text changes)',
+)
+
 console.log('Release metadata check passed successfully.')
