@@ -14,7 +14,7 @@ owns layout, wrapping, symbols and the colour policy.
 - A TTY-aware colour policy that honours `NO_COLOR`, with explicit `always` and `never` modes.
 - Reports with metrics, grouped findings and next steps, in compact or detailed form.
 - Error blocks, file-change previews and clickable locations in compatible terminals.
-- Progress for long-running work (optional `progress` feature in Rust).
+- Progress for long-running work (the live bar is behind the optional `progress` feature in Rust).
 - Grouped, keyboard-driven selection (optional `select` feature in Rust, Unix only).
 
 ## Where it stops

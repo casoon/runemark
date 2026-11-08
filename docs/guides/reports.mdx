@@ -93,7 +93,14 @@ implying a complete list.
 ## Locations
 
 Locations are files (with optional line and column), URLs, selectors or artifacts. In terminals
-that support OSC 8, `http` and `https` URLs become clickable links; see
+that support OSC 8, `http` and `https` URLs become clickable links. File locations become
+`file://` links too, with the line and column as a `#line:col` fragment. The link target is the
+**absolute path**: runemark canonicalises the path you passed (or joins it to the working directory
+when it cannot), so the escape sequence carries the local directory layout even though the visible
+text is the path as given. Selectors and artifacts are never links.
+
+Links follow the colour decision and are off in plain or redirected output. Turn them off
+explicitly with `Console::with_hyperlinks(false)` in Rust or `hyperlinks: false` in Node. See
 [Security](../security/) for how targets are validated.
 
 ## Metrics as outcomes

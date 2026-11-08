@@ -14,11 +14,16 @@ order: 1
 | Reports | `Report`, `RenderOptions`, `DetailLevel`, `Metric`, `Trend`, `FindingGroup`, `Finding`, `Badge`, `Confidence`, `NextStep`, `ScopeNote`, `Vocabulary` |
 | Locations | `Location`, `format_osc8` |
 | Errors and file changes | `ErrorBlock`, `DiffBlock`, `FileChange`, `FileAction` |
-| Progress | `ProgressSink`, `PlainProgress`, `SilentProgress`, `ProgressMode`, `TerminalProgress` (feature `progress`) |
-| Testing helpers | module `testing` |
+| Progress | `ProgressSink`, `PlainProgress`, `SilentProgress`, `ProgressMode`, `TerminalProgress`; `IndicatifProgress` (feature `progress`) |
+| Selection | `Menu`, `Group`, `Item`, `Hint`, `Layout`, `Outcome`, `Picked`, `SelectMode`; `Menu::run` and `Menu::run_multi` need feature `select` (Unix) |
+| Testing helpers | module `testing`: `strip_ansi`, `assert_plain_snapshot!` |
 
-Every type and method is documented on [docs.rs/runemark](https://docs.rs/runemark); this page
-does not duplicate it.
+`TerminalProgress` is always available; without the `progress` feature it writes plain lifecycle
+lines. `Menu::render` needs no feature. The renderers also have writer-first `write_to` methods;
+see the [Reports guide](../../guides/reports/).
+
+Item documentation lives on [docs.rs/runemark](https://docs.rs/runemark); this page does not
+duplicate it.
 
 ## Node package
 

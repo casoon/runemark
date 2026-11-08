@@ -9,7 +9,8 @@ notices, and `finish` with a verdict.
 
 ## Rust
 
-Enable the `progress` feature for the `indicatif`-backed terminal sink:
+`TerminalProgress` is always available. It draws a live bar only when the optional `progress`
+feature (which adds `indicatif`) is enabled:
 
 ```sh
 cargo add runemark --features progress
@@ -29,10 +30,11 @@ progress.advance(1, "https://example.com");
 progress.finish(Verdict::Passed, "Audit complete");
 ```
 
-`ProgressMode::Auto` shows a live bar in an interactive terminal and switches to a compact,
-line-oriented lifecycle when output is redirected, so stdout stays clean for machine-readable
-results. Without the feature, `PlainProgress` and `SilentProgress` implement the same
-`ProgressSink` trait.
+With the feature, `ProgressMode::Auto` shows a live bar in an interactive terminal and switches to
+a compact, line-oriented lifecycle when output is redirected, so stdout stays clean for
+machine-readable results. Without the feature, `TerminalProgress` always uses that lifecycle (or
+nothing, for `ProgressMode::Never`). `PlainProgress` and `SilentProgress` implement the same
+`ProgressSink` trait and need no feature either.
 
 `TerminalProgress::is_interactive` reports which of the two a sink ended up being. That is not
 derivable from `ProgressMode`: `Auto` resolves against the stream the caller passed **and**

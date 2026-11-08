@@ -117,9 +117,10 @@ let output = report.render_with_options(
 
 ### Progress
 
-The optional `progress` feature adds an `indicatif`-backed terminal progress
-sink. `Auto` uses a compact, line-oriented lifecycle when output is redirected,
-so machine-readable stdout remains clean.
+`TerminalProgress` is always available; the optional `progress` feature adds an
+`indicatif`-backed live bar to it. `Auto` draws the bar only on an interactive
+terminal and otherwise (or without the feature) uses a compact, line-oriented
+lifecycle, so machine-readable stdout remains clean.
 
 ```rust
 use runemark::{ColorMode, Console, ProgressMode, ProgressSink, TerminalProgress, Verdict};
