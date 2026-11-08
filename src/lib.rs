@@ -34,9 +34,9 @@ pub use report::{
 pub use select::{Group, Hint, Item, Layout, Menu, Outcome, Picked, SelectMode};
 pub use verdict::Verdict;
 
-// Compile the README and the guide samples as doctests. `docs/` is not part of the
-// published package, so these only exist for `cargo test --doc` in the repository.
-// The README carries a `select` sample, hence the feature gate.
+// Compile the README and the guide samples as doctests. The guides these include are
+// listed outside `exclude` in Cargo.toml, so `cargo test` also passes on the packaged
+// crate. The README carries a `select` sample, hence the feature gate.
 #[cfg(all(doctest, feature = "select"))]
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;

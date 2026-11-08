@@ -1232,6 +1232,7 @@ mod terminal;
 /// fall back to [`Menu::render`] on [`Outcome::Unavailable`] everywhere else.
 #[cfg(all(feature = "select", not(unix)))]
 impl Menu {
+    /// Reports [`Outcome::Unavailable`]: there is no terminal backend here.
     pub fn run(
         &self,
         _console: Console,
@@ -1241,6 +1242,7 @@ impl Menu {
         Ok(Outcome::Unavailable)
     }
 
+    /// Reports [`Picked::Unavailable`]: there is no terminal backend here.
     pub fn run_multi(
         &self,
         _console: Console,
