@@ -40,6 +40,14 @@ let menu = Menu::new()
 `Item::id` is the application's own identifier and is what selection returns. The label is
 what the user sees; descriptions form a second column that lines up across every group.
 
+**Ids must be unique within a menu.** Ticking is by id, so two entries sharing one tick
+together, and `Menu::run_multi` lists the id twice in `Picked::Chosen`.
+
+`Item`, `Group` and `Hint` are `#[non_exhaustive]`: build them with `new` and the builder
+methods rather than a struct literal, so a field can be added without a breaking release.
+`Outcome` and `Picked` are exhaustive on purpose — a caller matches them to decide what
+happens next, and a new case should be a compile error rather than a silent fallthrough.
+
 ## Running it
 
 ```rust

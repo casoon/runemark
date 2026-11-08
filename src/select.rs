@@ -69,9 +69,17 @@ pub enum Layout {
 }
 
 /// One selectable entry.
+///
+/// Non-exhaustive, so a field can be added without a breaking release: build
+/// one with [`Item::new`] and its `with_` methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Item {
     /// Returned on selection. The application's own identifier.
+    ///
+    /// Must be unique within a menu. Ticking is by id, so two entries sharing
+    /// one tick together, and `Menu::run_multi` reports the id twice in
+    /// [`Picked::Chosen`].
     pub id: String,
     /// The text shown in the list.
     pub label: String,
@@ -95,7 +103,11 @@ impl Item {
 }
 
 /// A titled section of entries.
+///
+/// Non-exhaustive, so a field can be added without a breaking release: build
+/// one with [`Group::new`] and its builder methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Group {
     pub label: String,
     pub items: Vec<Item>,
@@ -154,7 +166,11 @@ struct Tab<'a> {
 }
 
 /// A key shown in the footer, reported back when pressed.
+///
+/// Non-exhaustive, so a field can be added without a breaking release: build
+/// one with [`Hint::new`].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Hint {
     pub key: char,
     pub label: String,
@@ -170,6 +186,11 @@ impl Hint {
 }
 
 /// What the user did.
+///
+/// Exhaustive on purpose, unlike the presentation types. A caller matches on
+/// this to decide what happens next, and a new outcome is a new case it has to
+/// handle — better a compile error than a wildcard arm quietly treating it as
+/// a cancel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     /// An entry was chosen, carrying its [`Item::id`].
@@ -184,6 +205,9 @@ pub enum Outcome {
 }
 
 /// What the user did with a menu run by `Menu::run_multi` (`select` feature).
+///
+/// Exhaustive on purpose, for the same reason as [`Outcome`]: callers match
+/// it, and a new case should be a compile error, not a silent fallthrough.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Picked {
     /// Enter was pressed, carrying the [`Item::id`]s ticked at that moment,
