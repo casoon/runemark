@@ -308,6 +308,11 @@ which is what keeps a menu safe in a pipeline and in CI.
 `Menu::render` needs no feature at all. It is plain formatting with no cursor and no terminal
 control, and it is what a non-interactive caller shows instead.
 
+Like the rest of the crate, the menu follows the console's `SymbolTheme`. With the ASCII theme —
+which is what a console with colour off gets — `Menu::render` and the interactive menu draw `>`,
+`^` / `v`, `<>`, `...`, `|` and `-` instead of `›`, `↑` / `↓`, `←→`, `…`, `│` and `─`, so a pipe or
+a log file receives plain ASCII.
+
 ## Terminal restoration
 
 Raw mode is held by a guard that restores the terminal when it goes out of scope, on every
