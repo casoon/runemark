@@ -19,6 +19,8 @@ Consumers work with plain objects and strings, never with Rust types or builders
   rendering a partial report.
 - `color: 'auto'` checks stdout unless `stream: 'stderr'` is passed on the console, render, error
   and diff options; an explicit `isTerminal` wins over both. Progress always uses stderr.
+- `hyperlinks` switches OSC 8 links on or off independently of colour on the console, render, error
+  and diff options. Unset, links follow the colour decision, as before.
 - Numbers that map to Rust `u32` (`line`, `column`, `totalCount`, `maxCompactSamples`, `width`,
   progress `total` and `position`) must be integers from 0 to 4294967295. Anything else throws an
   error naming the field instead of wrapping. `location.column` without `location.line` throws.
@@ -35,6 +37,7 @@ consumer needs to render a report, not parity for its own sake.
 | Rust | Node | Status |
 | --- | --- | --- |
 | `ColorMode`, `Console`, `SymbolTheme`, `Tone` | `color`, `symbols`, `stream`, `isTerminal`, `RunemarkConsole`, `Tone` | Supported |
+| `Console::with_hyperlinks`, `hyperlinks_enabled` | `hyperlinks` | Supported |
 | `Verdict` | `Verdict`, `renderStatus`, `RunemarkConsole.renderVerdict` | Supported |
 | `Report`, `RenderOptions` | `ReportInput`, `RunemarkReport`, `renderReport`, `width` | Supported |
 | `Metric`, `Trend` | `MetricInput` (`verdict`, `tone`, `trend`, `delta`) | Supported |

@@ -90,6 +90,38 @@ test('terminal escape sequences and disallowed URL schemes are safely neutralize
   assert.ok(!rendered.includes('\x1b]8;;'), 'Must not create OSC 8 link for javascript: scheme')
 })
 
+test('hyperlinks is independent of colour and unset keeps the default', () => {
+  const report = new RunemarkReport({
+    title: 'Links',
+    verdict: Verdict.Passed,
+    groups: [{
+      title: 'Pages',
+      findings: [{ message: 'Slow', location: { kind: 'url', value: 'https://example.com/a' } }],
+    }],
+  })
+  const osc8 = /\x1b\]8;;https:\/\/example\.com\/a\x1b\\/
+  const colour = { color: 'always', isTerminal: true }
+
+  assert.match(report.render(colour), osc8)
+  assert.equal(report.render({ ...colour, hyperlinks: undefined }), report.render(colour))
+  assert.doesNotMatch(report.render({ color: 'never', isTerminal: false }), /\x1b\]8;;/)
+
+  const linkOnly = report.render({ color: 'never', isTerminal: false, hyperlinks: true })
+  assert.match(linkOnly, osc8)
+  assert.ok(!/\x1b\[\d/.test(linkOnly), 'no colour codes when color is never')
+
+  const coloured = report.render({ ...colour, hyperlinks: true })
+  assert.match(coloured, osc8)
+  assert.ok(!coloured.includes('\x1b]8;;\x1b\\\x1b]8;;'), 'no link around nothing')
+  assert.ok(!coloured.includes('\x1b]8;;\x1b\\' + '\x1b]8;;\x1b\\'))
+
+  const noLinks = report.render({ ...colour, hyperlinks: false })
+  assert.doesNotMatch(noLinks, /\x1b\]8;;/)
+  assert.match(noLinks, /\x1b\[\d/)
+
+  assert.throws(() => report.render({ hyperlinks: 'yes' }), /hyperlinks/)
+})
+
 test('error and diff renderers use the same native presentation core', () => {
   assert.match(
     renderError({ heading: 'Missing browser', commands: ['auditmysite browser install'] }, plain),

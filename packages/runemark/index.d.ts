@@ -16,6 +16,13 @@ export interface ConsoleOptions {
    * text you write with `process.stderr.write`.
    */
   stream?: 'stdout' | 'stderr'
+  /**
+   * Emit OSC 8 terminal hyperlinks for `url` and `file` locations, independent
+   * of colour. Unset follows the colour decision: links appear exactly where
+   * styling does. `true` with `color: 'never'` gives links without colour,
+   * `false` gives colour without links.
+   */
+  hyperlinks?: boolean
 }
 
 export interface RenderOptions extends ConsoleOptions {
@@ -137,7 +144,7 @@ export interface DiffInput {
 }
 
 /** Progress always writes to stderr, so it takes no `stream` option. */
-export interface ProgressOptions extends Omit<ConsoleOptions, 'stream'> {
+export interface ProgressOptions extends Omit<ConsoleOptions, 'stream' | 'hyperlinks'> {
   mode?: ProgressMode
 }
 

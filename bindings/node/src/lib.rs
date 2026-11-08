@@ -18,6 +18,7 @@ pub struct JsConsoleOptions {
     pub symbols: Option<String>,
     pub is_terminal: Option<bool>,
     pub stream: Option<String>,
+    pub hyperlinks: Option<bool>,
 }
 
 #[napi(object)]
@@ -26,6 +27,7 @@ pub struct JsRenderOptions {
     pub symbols: Option<String>,
     pub is_terminal: Option<bool>,
     pub stream: Option<String>,
+    pub hyperlinks: Option<bool>,
     pub width: Option<f64>,
 }
 
@@ -211,6 +213,7 @@ impl NativeProgress {
             options.symbols.as_deref(),
             Some(is_terminal),
             None,
+            None,
         )?;
         let mode = match options.mode.as_deref().unwrap_or("auto") {
             "auto" => ProgressMode::Auto,
@@ -285,12 +288,14 @@ fn console_from_options(options: Option<JsConsoleOptions>) -> Result<Console> {
         symbols: None,
         is_terminal: None,
         stream: None,
+        hyperlinks: None,
     });
     console_from_parts(
         options.color.as_deref(),
         options.symbols.as_deref(),
         options.is_terminal,
         options.stream.as_deref(),
+        options.hyperlinks,
     )
 }
 
@@ -300,6 +305,7 @@ fn render_context(options: Option<JsRenderOptions>) -> Result<(Console, RenderOp
         symbols: None,
         is_terminal: None,
         stream: None,
+        hyperlinks: None,
         width: None,
     });
     let console = console_from_parts(
@@ -307,6 +313,7 @@ fn render_context(options: Option<JsRenderOptions>) -> Result<(Console, RenderOp
         options.symbols.as_deref(),
         options.is_terminal,
         options.stream.as_deref(),
+        options.hyperlinks,
     )?;
     let layout = match options.width {
         Some(width) => RenderOptions::new().with_width(to_u32("width", width)? as usize),
@@ -320,6 +327,7 @@ fn console_from_parts(
     symbols: Option<&str>,
     is_terminal: Option<bool>,
     stream: Option<&str>,
+    hyperlinks: Option<bool>,
 ) -> Result<Console> {
     let color = match color.unwrap_or("auto") {
         "auto" => ColorMode::Auto,
@@ -334,7 +342,10 @@ fn console_from_parts(
         value => return Err(invalid_value("stream", value)),
     };
     let is_terminal = is_terminal.unwrap_or(stream_is_terminal);
-    let console = Console::new(color, is_terminal);
+    let mut console = Console::new(color, is_terminal);
+    if let Some(hyperlinks) = hyperlinks {
+        console = console.with_hyperlinks(hyperlinks);
+    }
     match symbols {
         None => Ok(console),
         Some("unicode") => Ok(console.with_theme(SymbolTheme::Unicode)),
@@ -596,6 +607,17 @@ mod tests {
         let err = parse_verdict("unknown").unwrap_err();
         assert_eq!(err.status, Status::InvalidArg);
         assert!(err.to_string().contains("invalid verdict: unknown"));
+    }
+
+    #[test]
+    fn test_hyperlinks_option_overrides_the_colour_default() {
+        let console = |color: &str, hyperlinks| {
+            console_from_parts(Some(color), None, Some(false), None, hyperlinks).unwrap()
+        };
+        assert!(console("always", None).hyperlinks_enabled());
+        assert!(!console("never", None).hyperlinks_enabled());
+        assert!(console("never", Some(true)).hyperlinks_enabled());
+        assert!(!console("always", Some(false)).hyperlinks_enabled());
     }
 
     #[test]
