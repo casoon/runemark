@@ -1224,6 +1224,8 @@ impl fmt::Display for Menu {
 #[cfg(all(feature = "select", unix))]
 mod interactive;
 #[cfg(all(feature = "select", unix))]
+mod resize;
+#[cfg(all(feature = "select", unix))]
 mod terminal;
 
 /// Without a terminal backend the menu still exists; it just never takes over.

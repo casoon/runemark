@@ -301,11 +301,14 @@ mark what is out of view. `Layout::Tabs` is the other answer to the same problem
 whose groups mean something: it pages by group instead of scrolling past every one of them. The window moves the least amount that keeps the cursor visible, so
 short cursor moves do not slide the whole screen.
 
-The size comes from the terminal itself and is re-read every time a frame is drawn. There is
-no `SIGWINCH` handler, and the menu waits on a key between frames, so **a resize is picked up on
-the next keypress**, not while the menu sits idle. The terminal may reflow the frame already on
-screen in the meantime, so the redraw that follows can leave a stale line behind; the next key
-redraws it cleanly. A terminal that reports no height gets the whole menu.
+The size comes from the terminal itself and is re-read every time a frame is drawn. A resize
+redraws **at once**, not at the next keypress: while the menu is open it handles `SIGWINCH`
+and wakes the wait for a key. A terminal that reports no height gets the whole menu.
+
+A narrowing resize can still leave a stale line. The terminal reflows the frame already on
+screen before the menu hears about it, and the redraw moves up by the number of lines it drew,
+not by what the terminal made of them. The next redraw is clean again. If the handler cannot be
+installed, the menu works without it and notices a resize at the next keypress instead.
 
 Lines that cannot be cut to fit are shortened, not left to wrap: the active tab, the heading
 note, and a footer key's label all give way before the line does. A terminal shorter than the
@@ -344,9 +347,24 @@ Raw mode is held by a guard that restores the terminal when it goes out of scope
 path out: an early return, an error, or an unwinding panic.
 
 A signal that kills the process outright — `SIGTERM`, `SIGHUP` — leaves the terminal in raw
-mode, because no destructor runs. runemark installs no signal handlers. An application that
-must survive that has to install its own. `Ctrl-C` is not affected: in raw mode it arrives as
-a key event and is reported as `Outcome::Cancelled`.
+mode, because no destructor runs. runemark handles none of those. An application that must
+survive that has to install its own. `Ctrl-C` is not affected: in raw mode it arrives as a key
+event and is reported as `Outcome::Cancelled`.
+
+### `SIGWINCH`
+
+The one signal the menu does handle is `SIGWINCH`, so a resize redraws immediately. The handler
+only writes a byte to a private pipe; the menu waits on the terminal and that pipe together.
+It is installed when the menu starts and the previous disposition is put back when it ends,
+on every path out: an early return, an error, or an unwinding panic.
+
+If the host program installed its own `SIGWINCH` handler first, it keeps being called for every
+resize while the menu runs — runemark's handler calls it after waking the menu — and is
+restored when the menu ends. While the menu runs, the handler's `sigaction` flags and mask are
+runemark's (`SA_RESTART` is set). Changing the `SIGWINCH` disposition from another thread
+while a menu is open is not supported: the menu puts back what it found when it started, which
+overwrites the change. Only one menu holds the handler at a time; a second one running
+concurrently on another thread does without it and notices a resize at the next keypress.
 
 ## Why not a terminal crate
 

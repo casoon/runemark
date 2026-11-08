@@ -11,6 +11,8 @@ use std::fs::File;
 use std::io;
 use std::os::fd::AsRawFd;
 
+use super::resize::{self, Event, ResizeWatch};
+
 /// Escape sequences the menu writes. Kept together so they are easy to audit.
 pub mod escape {
     pub const HIDE_CURSOR: &str = "\x1b[?25l";
@@ -42,6 +44,9 @@ pub enum Key {
     Interrupt,
     Backspace,
     Char(char),
+    /// The terminal changed size. Carries nothing: the next frame reads the
+    /// size afresh.
+    Resize,
     /// A recognised but unused key, or an escape sequence we skip.
     Other,
 }
@@ -63,9 +68,14 @@ fn means_no_terminal(error: &io::Error) -> bool {
 /// Restoring is tied to the destructor so it happens on every path out,
 /// including an unwinding panic. A signal that kills the process outright runs
 /// no destructor; that limitation is documented on `Menu::run`.
+///
+/// It also holds the `SIGWINCH` watch, which is restored the same way. The
+/// watch is optional: where it cannot be installed the terminal still works
+/// and a resize is noticed at the next keypress.
 pub struct RawTerminal {
     tty: File,
     original: libc::termios,
+    resize: Option<ResizeWatch>,
 }
 
 impl RawTerminal {
@@ -109,13 +119,23 @@ impl RawTerminal {
             }
         }
 
-        Ok(Some(Self { tty, original }))
+        let resize = if resize::selectable(fd) {
+            ResizeWatch::install()
+        } else {
+            None
+        };
+
+        Ok(Some(Self {
+            tty,
+            original,
+            resize,
+        }))
     }
 
     /// The terminal's size in lines and columns, if it reports one.
     ///
-    /// Queried per frame rather than cached. There is no `SIGWINCH` handler, so
-    /// a resize is picked up on the next keypress, when the next frame is drawn.
+    /// Queried per frame rather than cached. A resize wakes the wait for a key
+    /// (see [`Key::Resize`]), and the frame drawn then reads the new size.
     pub fn size(&self) -> Option<(usize, usize)> {
         // SAFETY: `winsize` is a plain C struct the ioctl fills completely.
         let size = unsafe {
@@ -180,8 +200,23 @@ impl RawTerminal {
         Ok(TimedReads { terminal: self })
     }
 
-    /// Blocks until the next key.
+    /// Blocks until the next key, or until the terminal is resized.
     pub fn read_key(&self) -> io::Result<Key> {
+        let Some(watch) = &self.resize else {
+            return self.read_input_key();
+        };
+        let event = resize::next_event(
+            || resize::wait(self.tty.as_raw_fd(), watch),
+            || self.read_input_key(),
+        )?;
+        Ok(match event {
+            Event::Input(key) => key,
+            Event::Resize => Key::Resize,
+        })
+    }
+
+    /// Reads the key whose first byte is waiting on the terminal.
+    fn read_input_key(&self) -> io::Result<Key> {
         let first = self.read_byte()?;
         decode_key(first, || self.timed_reads())
     }
