@@ -7,6 +7,8 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-08
+
 ### Breaking
 
 - **Select:** `Item`, `Group` and `Hint` are `#[non_exhaustive]`, so build them with `new` and the
@@ -65,8 +67,8 @@ existing behaviour, and such entries are marked `Breaking`.
   `u32` or a `location.column` without `line` throw instead of wrapping or being dropped.
 - **npm:** the README and examples use `color: 'auto'`, so `NO_COLOR` is honoured, and the build
   instructions install the tooling first.
-- **Releases:** the npm package carries the MIT licence text, and the stray `LICENSE-APACHE`, which no
-  manifest declared, is gone from the repository and the published crate.
+- **Releases:** the npm package carries the MIT licence text, the licence names its holder, and the
+  stray `LICENSE-APACHE`, which no manifest declared, is gone from the repository and the published crate.
 - **Releases:** the npm package lock file matches the package version, and the release check
   covers it.
 - **Docs:** the colour policy, API table, hyperlink and security pages match the code, and the
