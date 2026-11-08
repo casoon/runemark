@@ -31,8 +31,8 @@ owns layout, wrapping, symbols and the colour policy.
 
 - **Getting started**: [install](getting-started/installation/) the crate or the npm package and
   render a [first output](getting-started/quickstart/).
-- **Guides**: colour policy, reports, errors and diffs, progress, selection, the Node contract
-  and the security model.
+- **Guides**: colour policy, reports, errors and diffs, progress, selection, testing, the Node
+  contract and the security model.
 - **Reference**: an [overview of the public API](reference/api/). Item-level documentation lives
   on [docs.rs](https://docs.rs/runemark).
 

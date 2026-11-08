@@ -54,4 +54,6 @@ mod guide_doctests {
     struct Progress;
     #[doc = include_str!("../docs/guides/reports.mdx")]
     struct Reports;
+    #[doc = include_str!("../docs/guides/testing.md")]
+    struct Testing;
 }

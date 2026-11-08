@@ -1,7 +1,7 @@
 ---
 title: Node contract
 description: What the npm package guarantees, how the report schema is versioned, and what stays internal.
-order: 5
+order: 7
 ---
 
 `@casoon/runemark` is a native Node-API addon around the Rust renderer, built with napi-rs.

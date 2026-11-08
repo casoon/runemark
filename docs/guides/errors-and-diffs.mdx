@@ -34,12 +34,13 @@ eprint!("{}", block.render(Console::stderr(ColorMode::Auto)));
 ```js
 const { renderError } = require('@casoon/runemark')
 
+// stderr text: pass stream so `color: 'auto'` checks stderr rather than stdout
 process.stderr.write(renderError({
   heading: 'Required toolchain is unavailable',
   explanation: 'The configured version is not installed.',
   remedy: 'Install the required toolchain:',
   commands: ['toolchain install stable'],
-}))
+}, { stream: 'stderr' }))
 ```
 
 </div>

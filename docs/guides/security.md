@@ -1,7 +1,7 @@
 ---
 title: Security
 description: How runemark handles untrusted text – finding messages, file names and URLs – before it reaches a terminal.
-order: 6
+order: 8
 ---
 
 Findings often contain text the tool did not write itself: file names, page titles, URLs, messages

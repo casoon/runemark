@@ -9,11 +9,15 @@ order: 2
 | Part | Rust | Node (`ReportInput`) |
 | --- | --- | --- |
 | Title and verdict | `Report::new(title, Verdict)` | `title`, `verdict` |
-| Summary metrics, optional trend | `Metric::new(key, value).with_trend(Trend, delta)` | `metrics: [{ key, value, tone, trend, delta }]` |
+| Summary metrics, optional trend and verdict | `Metric::new(key, value).with_trend(Trend, delta).with_verdict(Verdict)` | `metrics: [{ key, value, verdict, tone, trend, delta }]` |
 | Finding groups | `FindingGroup::new(title).add_finding(…)` | `groups: [{ title, findings, totalCount, advisory }]` |
 | Findings | `Finding::new(Tone, message)` with rule ID, location, remedy, confidence, badge | `{ message, tone, ruleId, location, remedy, confidence, badge }` |
 | Next steps | `NextStep::new(text).with_command(cmd)` | `nextSteps: [{ text, command }]` |
-| Scope notes | `ScopeNote::new(title, notes)` | – |
+| Scope notes | `Report::add_scope_note(ScopeNote::new(heading, items))` | `scopeNotes: [{ heading, items }]` |
+| Status notes | `Report::add_vocabulary(Vocabulary)` | `vocabulary: [{ kind, value }]` |
+| Compact samples per group | `report.max_compact_samples = 5` | `maxCompactSamples` |
+| Top issue rules threshold | `report.top_issues_threshold = Some(50)` | `topIssuesThreshold` |
+| Overflow hint | `Report::with_details_hint(Some(hint))` | `detailsHint` |
 
 Verdicts: `passed`, `warning`, `failed`, `action-required`, `skipped`, `info`.
 
@@ -85,10 +89,145 @@ The compact form is a decision view: verdict, metrics and a limited number of sa
 group. The detailed form lists every provided finding with its rule ID, location and remedy.
 
 - Rust: `report.with_detail_level(DetailLevel::Detailed)`
-- Node: `detailLevel: 'detailed'`; `maxCompactSamples` sets how many findings the compact form shows
+- Node: `detailLevel: 'detailed'`
 
-When a group's `totalCount` is larger than the findings you pass, the report says so instead of
-implying a complete list.
+The compact form shows three findings per group. `Report::max_compact_samples` (a public field,
+there is no builder) and `maxCompactSamples` in Node change that number.
+
+When a group has more findings than the compact form shows, or its `totalCount` is larger than the
+findings you pass, the report says so instead of implying a complete list:
+`... 23 more finding(s) (use --details to view all)`. The detailed form lists every finding you
+passed; if `totalCount` is larger, it says `... N finding(s) not included in the report data`.
+
+The parenthetical in the compact line is the details hint. Rust sets it with
+`Report::with_details_hint(Some("see the full log".to_string()))`, and `with_details_hint(None)`
+drops it. Node uses `detailsHint: 'see the full log'`, or `detailsHint: false` to drop it. Change
+it when your CLI's flag is not called `--details`.
+
+```rust
+use runemark::{FindingGroup, Report, Verdict};
+
+let report = Report::new("Site audit", Verdict::Warning)
+    .with_details_hint(Some("run with --verbose".to_string()))
+    .add_group(FindingGroup::new("Accessibility").with_total_count(40));
+```
+
+## Top issue rules
+
+Once a report carries 20 findings or more across its groups (counting each group's `totalCount`),
+a "Top issue rules" block lists the five most frequent rule IDs with their counts, ahead of the
+groups:
+
+```text
+  Top issue rules:
+      16x  a11y/contrast
+       9x  a11y/img-alt
+```
+
+Only findings you pass with a rule ID are counted, so with a bounded sample the numbers describe
+the sample. The block is left out when no finding has a rule ID. Change the threshold with
+`report.top_issues_threshold = Some(50)` in Rust (`None` turns the block off), or
+`topIssuesThreshold: 50` in Node (`false` turns it off).
+
+```rust
+use runemark::{Report, Verdict};
+
+let mut report = Report::new("Site audit", Verdict::Warning);
+report.top_issues_threshold = None;
+```
+
+## Notes, badges and confidence
+
+Beyond metrics and findings, a report can carry short notes that qualify how far to trust it. They
+are plain data you pass in; runemark decides where they appear.
+
+- **Status notes** (`Vocabulary`) are shown on one line under the verdict, separated by `•`:
+  `DryRun` renders `[DRY-RUN]`, `Baseline("main")` renders `Baseline: main`, `Truncated(100)`
+  renders `Truncated at 100`, and `EmptyState("No fixes needed")` renders the text as given.
+- **Scope notes** (`ScopeNote`) say what the run did not cover. Each renders as
+  `Heading: item, item` under the verdict.
+- **Badges** (`Badge`) are a short label in front of a finding, rendered as `[QUICK WIN]`.
+  `Badge::quick_win()`, `gained()` and `lost()` are presets; `Badge::new(label, tone)` makes any
+  other. Node has no presets: pass `{ label: 'QUICK WIN', tone: 'success' }`.
+- **Confidence** (`Confidence::High`, `Medium`, `Low`) renders as `(high confidence)` after the
+  rule ID.
+- **Advisory groups** (`FindingGroup::with_advisory(true)`, `advisory: true`) mark a group as
+  informational; its heading gets an `[advisory]` suffix.
+
+<Tabs
+  label="Language"
+  tabs={[
+    { id: 'rust', label: 'Rust' },
+    { id: 'node', label: 'Node' },
+  ]}
+>
+<div slot="rust">
+
+```rust
+use runemark::{
+    Badge, Confidence, Finding, FindingGroup, Report, ScopeNote, Tone, Verdict, Vocabulary,
+};
+
+let report = Report::new("Site audit", Verdict::Warning)
+    .add_vocabulary(Vocabulary::DryRun)
+    .add_vocabulary(Vocabulary::Baseline("main".to_string()))
+    .add_scope_note(ScopeNote::new(
+        "Scope warnings",
+        vec!["History partial".to_string(), "1 file skipped".to_string()],
+    ))
+    .add_group(
+        FindingGroup::new("Accessibility")
+            .with_advisory(true)
+            .add_finding(
+                Finding::new(Tone::Warning, "Image missing alt attribute")
+                    .with_rule_id("a11y/img-alt")
+                    .with_badge(Badge::quick_win())
+                    .with_confidence(Confidence::High),
+            ),
+    );
+```
+
+</div>
+<div slot="node">
+
+```js
+const { renderReport } = require('@casoon/runemark')
+
+process.stdout.write(renderReport({
+  schemaVersion: 1,
+  title: 'Site audit',
+  verdict: 'warning',
+  vocabulary: [{ kind: 'dry-run' }, { kind: 'baseline', value: 'main' }],
+  scopeNotes: [{ heading: 'Scope warnings', items: ['History partial', '1 file skipped'] }],
+  groups: [{
+    title: 'Accessibility',
+    advisory: true,
+    findings: [{
+      message: 'Image missing alt attribute',
+      tone: 'warning',
+      ruleId: 'a11y/img-alt',
+      badge: { label: 'QUICK WIN', tone: 'success' },
+      confidence: 'high',
+    }],
+  }],
+}))
+```
+
+</div>
+</Tabs>
+
+In Node, `vocabulary` is a tagged union on `kind`: `'dry-run'` takes no `value`; `'empty-state'`,
+`'baseline'` and `'truncated'` require one (an integer for `'truncated'`). Without colour, both
+samples render as:
+
+```text
+[WARN] Site audit
+  [DRY-RUN] • Baseline: main
+  Scope warnings: History partial, 1 file skipped
+
+* Accessibility (1) [advisory]
+  - [QUICK WIN] Image missing alt attribute [a11y/img-alt] (high confidence)
+```
 
 ## Locations
 
@@ -114,6 +253,19 @@ use runemark::{Metric, Verdict};
 let metric = Metric::new("Tests", "1.2s").with_verdict(Verdict::Failed);
 ```
 
+In Node the field is `verdict` on the metric, with the same accepted strings as the report's:
+
+```js
+const { renderReport } = require('@casoon/runemark')
+
+process.stdout.write(renderReport({
+  schemaVersion: 1,
+  title: 'Build',
+  verdict: 'failed',
+  metrics: [{ key: 'Tests', value: '1.2s', verdict: 'failed' }],
+}))
+```
+
 Use it whenever a metric answers "did this pass" rather than only "how many". A tone alone
 disappears with colour: piped, redirected, or under `NO_COLOR`, a failing metric reads exactly
 like a passing one. The symbol survives all three, and follows the console's theme — `✖` where
@@ -121,3 +273,33 @@ symbols are drawn, `[FAIL]` where they are not, which is the same condition.
 
 An explicit `with_tone` still wins, in whichever order the two are called. The symbol counts
 towards the width that decides whether metrics stack, since an ASCII `[WARN]` is six columns.
+
+## Writing to a stream
+
+Every renderer has a writer-first method next to the `String` one, so output can go straight to
+stdout, stderr or a file without building an intermediate string. They take the console and any
+`std::io::Write`, and return `std::io::Result<()>`:
+
+| Item | `String` | Writer |
+| --- | --- | --- |
+| `Report` | `render(console)` | `write_to(console, &mut writer)` |
+| `Report` with width | `render_with_options(console, options)` | `write_with_options(console, options, &mut writer)` |
+| `ErrorBlock`, `DiffBlock`, `Location`, `Badge` | `render(console)` | `write_to(console, &mut writer)` |
+| `Verdict` | `render(console, message)` | `write_to(console, message, &mut writer)` |
+| `Console` | `paint(tone, value)` | `write_paint(tone, value, &mut writer)` |
+
+```rust
+use runemark::{ColorMode, Console, Report, Verdict};
+
+fn print_report(report: &Report) -> std::io::Result<()> {
+    let console = Console::stdout(ColorMode::Auto);
+    report.write_to(console, &mut std::io::stdout().lock())
+}
+
+let report = Report::new("Site audit", Verdict::Passed);
+print_report(&report).unwrap();
+```
+
+The output is identical to the `String` form. Node has no writer-first API: rendering returns
+strings and your code writes them (`RunemarkConsole.write*` accepts any object with a `write(text)`
+method).
