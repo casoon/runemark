@@ -3,6 +3,7 @@ import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { binaries } from '../packages/runemark/scripts/release-binaries.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
@@ -31,11 +32,21 @@ const nodeDepVersion = nodeDepMatch[1]
 const pkgJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'packages/runemark/package.json'), 'utf8'))
 const pkgVersion = pkgJson.version
 
+// 3b. The lock file repeats the package version twice. `npm ci` tolerates a
+// stale value, so it drifted unnoticed from 0.3.3 to 0.9.1.
+const pkgLock = JSON.parse(
+  fs.readFileSync(path.join(rootDir, 'packages/runemark/package-lock.json'), 'utf8'),
+)
+const lockVersion = pkgLock.version
+const lockRootVersion = pkgLock.packages?.['']?.version
+
 console.log(`Checking version parity:`)
 console.log(`  Root Cargo.toml:              ${rootVersion}`)
 console.log(`  bindings/node/Cargo.toml:     ${nodeVersion}`)
 console.log(`  bindings/node runemark dep:   ${nodeDepVersion}`)
 console.log(`  packages/runemark/package.json: ${pkgVersion}`)
+console.log(`  package-lock.json:            ${lockVersion}`)
+console.log(`  package-lock.json packages[""]: ${lockRootVersion}`)
 
 assert.equal(nodeVersion, rootVersion, 'bindings/node version must match root crate version')
 assert.equal(
@@ -44,6 +55,38 @@ assert.equal(
   "bindings/node's runemark dependency must match root crate version",
 )
 assert.equal(pkgVersion, rootVersion, 'packages/runemark version must match root crate version')
+assert.equal(
+  lockVersion,
+  rootVersion,
+  'packages/runemark/package-lock.json version must match root crate version (run `npm install --package-lock-only`)',
+)
+assert.equal(
+  lockRootVersion,
+  rootVersion,
+  'packages/runemark/package-lock.json packages[""] version must match root crate version (run `npm install --package-lock-only`)',
+)
+
+// 3c. The platform list. `napi.targets` is the only list; the release build
+// matrix has to build exactly those, and the binaries the publish step expects
+// (derived from the same targets) have to be one file per target.
+const targets = pkgJson.napi.targets
+const releaseWorkflow = fs.readFileSync(path.join(rootDir, '.github/workflows/release.yml'), 'utf8')
+const matrixTargets = [...releaseWorkflow.matchAll(/^\s+- target: (\S+)\s*$/gm)].map((m) => m[1])
+
+console.log(`  napi.targets:                 ${targets.length}`)
+console.log(`  release.yml build matrix:     ${matrixTargets.length}`)
+console.log(`  release binaries:             ${binaries.length}`)
+
+assert.deepEqual(
+  [...matrixTargets].sort(),
+  [...targets].sort(),
+  'release.yml build matrix targets must match napi.targets in packages/runemark/package.json',
+)
+assert.equal(
+  new Set(binaries).size,
+  targets.length,
+  'release-binaries.mjs must derive one distinct binary per napi.targets entry',
+)
 
 // The project page is not checked here. Since pages-theme 0.8.0 it derives the
 // version from these manifests itself, so there is no fourth copy to drift.

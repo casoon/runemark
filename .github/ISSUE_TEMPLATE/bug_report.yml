@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a bug or unexpected output
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report vulnerabilities here; see the security policy instead.
+  - type: input
+    id: runemark-version
+    attributes:
+      label: runemark version
+    validations:
+      required: true
+  - type: input
+    id: rust-version
+    attributes:
+      label: Rust version
+      description: Output of `rustc --version`.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal
+      description: Terminal emulator and, if relevant, multiplexer.
+    validations:
+      required: true
+  - type: dropdown
+    id: color-mode
+    attributes:
+      label: Color mode
+      options:
+        - Colour
+        - Plain (NO_COLOR or not a terminal)
+        - Both
+    validations:
+      required: true
+  - type: dropdown
+    id: redirected
+    attributes:
+      label: Was the output redirected?
+      options:
+        - "No"
+        - Yes, to a file
+        - Yes, piped to another program
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The smallest code or command that shows the problem.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: plain-output
+    attributes:
+      label: Plain output
+      description: For rendering issues, the output with colour off.
+      render: text
+  - type: textarea
+    id: ansi-output
+    attributes:
+      label: ANSI output
+      description: For rendering issues, the raw output with colour on, when possible.
+      render: text

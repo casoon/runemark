@@ -4,13 +4,16 @@
 
 ### Prerequisites
 
-- Rust 1.85 or newer
+- Rust 1.85 or newer for the crate (the MSRV CI tests); the Node binding in
+  `bindings/node` needs Rust 1.88
 - Git
+- Node 20 or newer with npm, only for the Node binding and `packages/runemark`
+- pnpm 10, only to build the project site
 
 ### Build and test
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/casoon/runemark
 cd runemark
 cargo test --all-features
 ```
@@ -18,11 +21,43 @@ cargo test --all-features
 Run the same checks as CI before opening a pull request:
 
 ```bash
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
-cargo package --locked
+scripts/verify.sh          # everything the Ubuntu CI jobs run
+scripts/verify.sh --rust   # without the Node binding section
 ```
+
+It runs, in this order and stopping at the first failure:
+
+- `cargo fmt --check`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --all-features`, plus the same on the MSRV 1.85 when that
+  toolchain is installed (`rustup toolchain install 1.85`)
+- `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`, with and without
+  `--all-features`
+- `cargo package --locked`
+- `node scripts/check-release-metadata.mjs`
+- the Node job: binding clippy and test, then in `packages/runemark`
+  `npm ci`, `npm test`, `npm run test:types`, `npm run test:contract` and
+  `npm run pack:check`
+
+CI additionally runs the tests on macOS and Windows and the Node package on
+Node 20 and 22; those are not covered locally.
+
+### Documentation and project site
+
+`docs/` holds the documentation pages and `site/` is the Astro project that
+publishes them (with the showcase) to GitHub Pages. The showcase renders with
+the native Node binding, so build that first:
+
+```bash
+(cd packages/runemark && npm ci && npm run build)
+cd site
+pnpm install --frozen-lockfile
+pnpm dev        # live preview
+pnpm build      # production build into site/dist
+```
+
+The page theme is the npm package `@casoon/pages-theme`, a dependency of
+`site/`. Fix theme problems in its own repository, not here.
 
 ## API principles
 
@@ -55,13 +90,16 @@ boundaries:
    own.
 4. Use a concise conventional commit subject where practical, such as
    `feat: add grouped finding summary` or `fix: preserve plain output`.
+5. Add an entry under `## [Unreleased]` in `CHANGELOG.md` for every user-facing
+   change, in the same pull request.
 
 ## Releasing
 
 1. Bump the version in `Cargo.toml`, `bindings/node/Cargo.toml` (package and
-   `runemark` dependency) and `packages/runemark/package.json`, and date the
-   release in `CHANGELOG.md`. `node scripts/check-release-metadata.mjs` checks
-   that they agree.
+   `runemark` dependency) and `packages/runemark/package.json`, refresh
+   `packages/runemark/package-lock.json` (`npm install --package-lock-only`
+   there), and date the release in `CHANGELOG.md`.
+   `node scripts/check-release-metadata.mjs` checks that they agree.
 2. After merging to `main`, optionally run `gh workflow run release.yml --ref main`
    to build and smoke-test all native binaries before tagging (dry run, nothing
    is published).
@@ -79,11 +117,16 @@ boundaries:
    (`npm run fetch:binaries`) and runs `npm publish`; `prepublishOnly` refuses
    to publish unless every binary the package ships matches the release
    checksums and the host binary passes the smoke test.
-   Which binaries those are is `scripts/release-binaries.mjs`, not this list —
-   it was six until x86_64 macOS was dropped.
+   Which binaries those are is `napi.targets` in
+   `packages/runemark/package.json`, not this list — it was six until x86_64
+   macOS was dropped. `scripts/release-binaries.mjs` derives its list from it,
+   and `scripts/check-release-metadata.mjs` checks the release build matrix
+   against it.
 
 ## Reporting issues
 
-Include the runemark version, Rust version, operating system, terminal, color
+Do not report vulnerabilities as issues; follow [SECURITY.md](SECURITY.md).
+
+For bugs, include the runemark version, Rust version, operating system, terminal, color
 mode, whether output was redirected, and a minimal reproduction. For rendering
 issues, include the plain output as well as the ANSI output when possible.
