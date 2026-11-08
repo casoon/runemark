@@ -56,8 +56,12 @@ impl Menu {
     ///
     /// A signal that kills the process outright — `SIGTERM`, `SIGHUP` — leaves
     /// the terminal in raw mode, because no destructor runs. This crate
-    /// installs no signal handlers; an application that needs to survive that
-    /// must install its own.
+    /// handles none of those; an application that needs to survive that must
+    /// install its own.
+    ///
+    /// While the menu runs, `SIGWINCH` has a handler of this crate's so a
+    /// resize redraws at once. It calls the handler that was installed before
+    /// it, and puts that one back when the menu ends, on every path out.
     pub fn run(
         &self,
         console: Console,
@@ -210,7 +214,8 @@ impl Menu {
                 None => Action::Ignore,
             },
             Key::Char(pressed) => self.act_on_char(pressed, state),
-            Key::Other => Action::Ignore,
+            // The loop redraws after every key, which is all a resize needs.
+            Key::Other | Key::Resize => Action::Ignore,
         }
     }
 
@@ -1019,5 +1024,202 @@ mod tests {
             .with_layout(Layout::Flat)
             .add_hint(Hint::new('H', "Health"));
         assert_eq!(menu.act_on(Key::Char('h'), &ticking()), Action::Ignore);
+    }
+
+    #[test]
+    fn a_resize_changes_nothing_but_triggers_a_redraw() {
+        let menu = tabbed();
+        let state = State::default().at(2);
+        assert_eq!(menu.act_on(Key::Resize, &state), Action::Ignore);
+    }
+
+    /// Runs the menu on the controlling terminal; the child half of
+    /// [`a_resize_redraws_the_menu_at_the_new_width`]. Does nothing unless
+    /// that test started it.
+    #[test]
+    fn pty_child() {
+        if std::env::var_os(PTY_CHILD).is_none() {
+            return;
+        }
+        let outcome = pty_menu().run(
+            Console::new(ColorMode::Never, false),
+            SelectMode::Always,
+            true,
+        );
+        assert_eq!(outcome.unwrap(), Outcome::Cancelled);
+    }
+
+    const PTY_CHILD: &str = "RUNEMARK_PTY_CHILD";
+    const WIDE: usize = 80;
+    const NARROW: usize = 30;
+
+    fn pty_menu() -> Menu {
+        Menu::new().with_heading("resize").add_group(
+            Group::new("Scripts")
+                .add_item(Item::new("long", "w".repeat(60)))
+                .add_item(Item::new("short", "short")),
+        )
+    }
+
+    /// Appends what the pty master has right now. Returns whether it was
+    /// anything.
+    fn pull(master: i32, seen: &mut Vec<u8>) -> bool {
+        let mut any = false;
+        let mut chunk = [0u8; 4096];
+        loop {
+            // SAFETY: reading into a buffer we own from an open descriptor.
+            let read = unsafe { libc::read(master, chunk.as_mut_ptr().cast(), chunk.len()) };
+            if read <= 0 {
+                return any;
+            }
+            seen.extend_from_slice(&chunk[..usize::try_from(read).unwrap()]);
+            any = true;
+        }
+    }
+
+    /// Reads from the pty master until `done` is satisfied and the output has
+    /// been quiet for a moment, or the deadline passes. Returns whether it was.
+    fn read_pty(master: i32, seen: &mut Vec<u8>, done: impl Fn(&[u8]) -> bool) -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let mut last_data = std::time::Instant::now();
+        while std::time::Instant::now() < deadline {
+            if pull(master, seen) {
+                last_data = std::time::Instant::now();
+            } else if done(seen) && last_data.elapsed() > std::time::Duration::from_millis(300) {
+                // Settled, so a frame written in pieces has all arrived.
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        false
+    }
+
+    #[test]
+    fn a_resize_redraws_the_menu_at_the_new_width() {
+        use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+        use std::os::unix::process::CommandExt;
+        use std::process::{Command, Stdio};
+
+        let mut size = libc::winsize {
+            ws_row: 24,
+            ws_col: u16::try_from(WIDE).unwrap(),
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        let (mut master, mut slave) = (0, 0);
+        // SAFETY: the out-pointers are valid locals; `openpty` fills them.
+        let opened = unsafe {
+            libc::openpty(
+                &mut master,
+                &mut slave,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(opened, 0, "no pty to test with");
+        // SAFETY: both descriptors are fresh from `openpty`.
+        let (master, slave) =
+            unsafe { (OwnedFd::from_raw_fd(master), OwnedFd::from_raw_fd(slave)) };
+        // SAFETY: `master` is open; this only makes reads return at once.
+        unsafe {
+            libc::fcntl(master.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK);
+        }
+        let master_fd = master.as_raw_fd();
+        // SAFETY: `master` is open and `size` is a valid `winsize`.
+        unsafe {
+            libc::ioctl(master_fd, libc::TIOCSWINSZ, &raw const size);
+        }
+
+        let stdio = || Stdio::from(slave.try_clone().unwrap());
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "select::interactive::tests::pty_child",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(PTY_CHILD, "1")
+            .stdin(stdio())
+            .stdout(stdio())
+            .stderr(stdio());
+        // SAFETY: only async-signal-safe calls between fork and exec. The
+        // child becomes a session leader whose controlling terminal is the
+        // pty, so `/dev/tty` opens it.
+        unsafe {
+            command.pre_exec(|| {
+                libc::setsid();
+                libc::ioctl(0, libc::TIOCSCTTY as _, 0);
+                Ok(())
+            });
+        }
+        let mut child = command.spawn().unwrap();
+        drop(slave);
+
+        let mut seen = Vec::new();
+        let first_frame = |seen: &[u8]| String::from_utf8_lossy(seen).contains("short");
+        let drew = read_pty(master_fd, &mut seen, first_frame);
+
+        let mut resized = false;
+        if drew {
+            size.ws_col = u16::try_from(NARROW).unwrap();
+            // SAFETY: `master` is open and `size` is a valid `winsize`.
+            unsafe {
+                libc::ioctl(master_fd, libc::TIOCSWINSZ, &raw const size);
+            }
+            let before = seen.len();
+            let redrawn = |seen: &[u8]| seen[before..].windows(3).any(|w| w == b"\x1b[J");
+            resized = read_pty(master_fd, &mut seen, redrawn);
+        }
+
+        // Ctrl-C ends the menu, whatever happened above.
+        // SAFETY: writing one byte from a literal to an open descriptor.
+        unsafe {
+            libc::write(master_fd, b"\x03".as_ptr().cast(), 1);
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let status = loop {
+            pull(master_fd, &mut seen);
+            if let Some(status) = child.try_wait().unwrap() {
+                pull(master_fd, &mut seen);
+                break Some(status);
+            }
+            if std::time::Instant::now() > deadline {
+                let _ = child.kill();
+                break None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+
+        let text = String::from_utf8_lossy(&seen);
+        assert!(drew, "no first frame: {text:?}");
+        assert!(resized, "no frame after the resize: {text:?}");
+        assert!(
+            status.is_some_and(|s| s.success()),
+            "child: {status:?}\n{text:?}"
+        );
+
+        // Frames are separated by the clear that begins each redraw. The one
+        // right after the resize has to fit the new width, which the first,
+        // at the old width, did not.
+        let frames: Vec<&str> = text.split("\x1b[J").collect();
+        let widest = |frame: &str| {
+            frame
+                .split("\r\n")
+                .filter(|line| !line.contains('\x1b'))
+                .map(|line| line.chars().count())
+                .max()
+                .unwrap_or(0)
+        };
+        assert!(
+            widest(frames[0]) > NARROW,
+            "the first frame was already narrow"
+        );
+        assert!(
+            widest(frames[1]) <= NARROW,
+            "the redraw kept the old width: {:?}",
+            frames[1]
+        );
     }
 }

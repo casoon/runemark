@@ -39,6 +39,7 @@ existing behaviour, and such entries are marked `Breaking`.
 - **Pages:** the project site uses the current shared theme (0.12.6).
 - **Select:** `Menu::render` and the interactive menu follow the console's `SymbolTheme` and draw
   plain ASCII with the ASCII theme.
+- **Select:** the menu redraws on terminal resize at once instead of at the next keypress.
 - **Site:** the start page gets a "How it renders" section on adaptive report width, next to the
   existing narrow-terminal example.
 - **Site:** the footer follows the page language instead of always showing German text, and the
