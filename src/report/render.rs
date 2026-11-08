@@ -207,9 +207,10 @@ impl Report {
         if total_count > rendered_finding_count {
             let remaining = total_count - rendered_finding_count;
             let message = match self.detail_level {
-                DetailLevel::Compact => {
-                    format!("... {remaining} more finding(s) (use --details to view all)")
-                }
+                DetailLevel::Compact => match &self.details_hint {
+                    Some(hint) => format!("... {remaining} more finding(s) ({hint})"),
+                    None => format!("... {remaining} more finding(s)"),
+                },
                 DetailLevel::Detailed => {
                     format!("... {remaining} finding(s) not included in the report data")
                 }
@@ -445,6 +446,38 @@ mod tests {
             report = report.add_metric(metric);
         }
         report.render(console)
+    }
+
+    fn overflowing(mut report: Report) -> String {
+        report.max_compact_samples = 1;
+        report
+            .add_group(
+                FindingGroup::new("g")
+                    .add_finding(Finding::new(Tone::Warning, "one"))
+                    .add_finding(Finding::new(Tone::Warning, "two")),
+            )
+            .render(plain())
+    }
+
+    #[test]
+    fn the_overflow_hint_defaults_to_the_details_flag() {
+        let report = Report::new("t", Verdict::Info);
+        assert!(
+            overflowing(report).contains("... 1 more finding(s) (use --details to view all)\n")
+        );
+    }
+
+    #[test]
+    fn a_none_details_hint_drops_the_parenthetical() {
+        let report = Report::new("t", Verdict::Info).with_details_hint(None);
+        assert!(overflowing(report).contains("... 1 more finding(s)\n"));
+    }
+
+    #[test]
+    fn a_custom_details_hint_replaces_the_parenthetical() {
+        let report =
+            Report::new("t", Verdict::Info).with_details_hint(Some("use --verbose".into()));
+        assert!(overflowing(report).contains("... 1 more finding(s) (use --verbose)\n"));
     }
 
     #[test]

@@ -103,8 +103,17 @@ impl Badge {
         Self::new("LOST", Tone::Error)
     }
 
+    /// Writes the badge directly to a writer.
+    pub fn write_to(
+        &self,
+        console: crate::color::Console,
+        writer: &mut (impl std::io::Write + ?Sized),
+    ) -> std::io::Result<()> {
+        console.write_paint(self.tone, format!("[{}]", self.label), writer)
+    }
+
     pub fn render(&self, console: crate::color::Console) -> String {
-        console.paint(self.tone, format!("[{}]", self.label))
+        crate::internal::collect_to_string(|buf| self.write_to(console, buf))
     }
 }
 
@@ -334,6 +343,8 @@ pub struct Report {
     pub detail_level: DetailLevel,
     pub max_compact_samples: usize,
     pub top_issues_threshold: Option<usize>,
+    /// Text in parentheses after a compact-mode overflow message; `None` omits it.
+    pub details_hint: Option<String>,
 }
 
 impl Report {
@@ -350,12 +361,21 @@ impl Report {
             detail_level: DetailLevel::Compact,
             max_compact_samples: 3,
             top_issues_threshold: Some(20),
+            details_hint: Some("use --details to view all".to_string()),
         }
     }
 
     /// Sets the detail level mode.
     pub fn with_detail_level(mut self, level: DetailLevel) -> Self {
         self.detail_level = level;
+        self
+    }
+
+    /// Sets the hint shown in parentheses after a compact-mode overflow message.
+    ///
+    /// The default is `use --details to view all`. `None` drops the parenthetical.
+    pub fn with_details_hint(mut self, hint: Option<String>) -> Self {
+        self.details_hint = hint;
         self
     }
 

@@ -2,6 +2,7 @@
 
 use crate::color::{Console, Tone, sanitize_visible_text};
 use std::fmt::{self, Display};
+use std::io::Write;
 use std::path::PathBuf;
 
 /// A location within a file, document, or remote resource.
@@ -66,14 +67,24 @@ impl Location {
         sanitize_visible_text(&plain).into_owned()
     }
 
-    /// Renders the location, opting into OSC 8 terminal hyperlinks if colors/TTY are enabled.
+    /// Renders the location, emitting OSC 8 terminal hyperlinks when the console
+    /// has hyperlinks enabled and ANSI styles when it has colour enabled.
     pub fn render(&self, console: Console) -> String {
+        crate::internal::collect_to_string(|buf| self.write_to(console, buf))
+    }
+
+    /// Writes the location directly to a writer, like [`Location::render`].
+    pub fn write_to(
+        &self,
+        console: Console,
+        writer: &mut (impl Write + ?Sized),
+    ) -> std::io::Result<()> {
         let plain = self.to_plain_string();
-        if !console.color_enabled() {
-            return plain;
+        if !console.color_enabled() && !console.hyperlinks_enabled() {
+            return write!(writer, "{plain}");
         }
 
-        match self {
+        let rendered = match self {
             Self::File { path, line, column } => {
                 let abs_path = path.canonicalize().unwrap_or_else(|_| {
                     if path.is_absolute() {
@@ -94,11 +105,18 @@ impl Location {
                     (None, _) => format!("file://{}", percent_encode(&url_path)),
                 };
                 let styled_text = console.paint(Tone::Muted, &plain);
-                format_osc8_with_trusted_text(&file_url, &styled_text)
+                if console.hyperlinks_enabled() {
+                    format_osc8_with_trusted_text(&file_url, &styled_text)
+                } else {
+                    styled_text
+                }
             }
             Self::Url(url) => {
                 let styled_url = console.paint(Tone::Info, url);
-                if is_allowed_url_scheme(url) && is_safe_osc8_target(url) {
+                if console.hyperlinks_enabled()
+                    && is_allowed_url_scheme(url)
+                    && is_safe_osc8_target(url)
+                {
                     format_osc8_with_trusted_text(url, &styled_url)
                 } else {
                     styled_url
@@ -106,7 +124,8 @@ impl Location {
             }
             Self::Selector(sel) => console.paint(Tone::Info, format!("`{sel}`")),
             Self::Artifact(path) => console.paint(Tone::Success, path.display()),
-        }
+        };
+        writer.write_all(rendered.as_bytes())
     }
 }
 
