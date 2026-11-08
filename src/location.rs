@@ -66,10 +66,11 @@ impl Location {
         sanitize_visible_text(&plain).into_owned()
     }
 
-    /// Renders the location, opting into OSC 8 terminal hyperlinks if colors/TTY are enabled.
+    /// Renders the location, emitting OSC 8 terminal hyperlinks when the console
+    /// has hyperlinks enabled and ANSI styles when it has colour enabled.
     pub fn render(&self, console: Console) -> String {
         let plain = self.to_plain_string();
-        if !console.color_enabled() {
+        if !console.color_enabled() && !console.hyperlinks_enabled() {
             return plain;
         }
 
@@ -94,11 +95,18 @@ impl Location {
                     (None, _) => format!("file://{}", percent_encode(&url_path)),
                 };
                 let styled_text = console.paint(Tone::Muted, &plain);
-                format_osc8_with_trusted_text(&file_url, &styled_text)
+                if console.hyperlinks_enabled() {
+                    format_osc8_with_trusted_text(&file_url, &styled_text)
+                } else {
+                    styled_text
+                }
             }
             Self::Url(url) => {
                 let styled_url = console.paint(Tone::Info, url);
-                if is_allowed_url_scheme(url) && is_safe_osc8_target(url) {
+                if console.hyperlinks_enabled()
+                    && is_allowed_url_scheme(url)
+                    && is_safe_osc8_target(url)
+                {
                     format_osc8_with_trusted_text(url, &styled_url)
                 } else {
                     styled_url

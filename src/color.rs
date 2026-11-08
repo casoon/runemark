@@ -72,6 +72,7 @@ pub enum SymbolTheme {
 pub struct Console {
     color: bool,
     theme: SymbolTheme,
+    hyperlinks: bool,
 }
 
 impl Console {
@@ -80,6 +81,7 @@ impl Console {
         let enabled = color.enabled(is_terminal);
         Self {
             color: enabled,
+            hyperlinks: enabled,
             theme: if enabled {
                 SymbolTheme::Unicode
             } else {
@@ -104,9 +106,22 @@ impl Console {
         self
     }
 
+    /// Explicitly override whether OSC 8 terminal hyperlinks are emitted.
+    ///
+    /// By default hyperlinks follow the colour decision.
+    pub fn with_hyperlinks(mut self, hyperlinks: bool) -> Self {
+        self.hyperlinks = hyperlinks;
+        self
+    }
+
     /// Returns whether this console emits ANSI styles.
     pub fn color_enabled(self) -> bool {
         self.color
+    }
+
+    /// Returns whether this console emits OSC 8 terminal hyperlinks.
+    pub fn hyperlinks_enabled(self) -> bool {
+        self.hyperlinks
     }
 
     /// Returns the symbol theme used by this console.
@@ -232,6 +247,25 @@ mod tests {
     #[test]
     fn with_theme_overrides_the_default_theme() {
         let console = Console::new(ColorMode::Always, false).with_theme(SymbolTheme::Ascii);
+        assert_eq!(console.symbol_theme(), SymbolTheme::Ascii);
+    }
+
+    #[test]
+    fn hyperlinks_default_to_the_colour_decision() {
+        assert!(Console::new(ColorMode::Always, false).hyperlinks_enabled());
+        assert!(!Console::new(ColorMode::Never, true).hyperlinks_enabled());
+    }
+
+    #[test]
+    fn with_hyperlinks_overrides_the_default_independently() {
+        let console = Console::new(ColorMode::Always, false).with_hyperlinks(false);
+        assert!(console.color_enabled());
+        assert!(!console.hyperlinks_enabled());
+        assert_eq!(console.symbol_theme(), SymbolTheme::Unicode);
+
+        let console = Console::new(ColorMode::Never, false).with_hyperlinks(true);
+        assert!(!console.color_enabled());
+        assert!(console.hyperlinks_enabled());
         assert_eq!(console.symbol_theme(), SymbolTheme::Ascii);
     }
 
