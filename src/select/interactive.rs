@@ -286,7 +286,7 @@ impl Menu {
         state: &State,
         view: &mut Scroll,
     ) -> io::Result<()> {
-        let viewport = view.advance(self, terminal, state);
+        let viewport = view.advance(self, terminal.size(), state);
 
         // Raw mode drops the implicit carriage return on newline, so the frame
         // is rendered normally and then given explicit ones.
@@ -330,16 +330,25 @@ impl Scroll {
     /// Only moving when the cursor would leave the window keeps the list still
     /// under the cursor; recentring on every keypress makes short moves feel
     /// like the whole screen is sliding.
-    fn advance(&mut self, menu: &Menu, terminal: &RawTerminal, state: &State) -> Option<Viewport> {
+    fn advance(
+        &mut self,
+        menu: &Menu,
+        size: Option<(usize, usize)>,
+        state: &State,
+    ) -> Option<Viewport> {
         // A terminal that reports no size gets the whole menu, as before.
-        let (height, columns) = terminal.size()?;
+        let (height, columns) = size?;
         let columns = (columns > 0).then_some(columns);
         let view = state.view();
         let rows = menu.body_height(view);
         // One line stays free so the frame does not push its own top off screen.
-        let body = height.saturating_sub(menu.chrome_height(view, columns) + 1);
+        // A terminal shorter than the chrome still gets one row: the cursor has
+        // to be somewhere, and the viewport keeps it in sight.
+        let body = height
+            .saturating_sub(menu.chrome_height(view, columns) + 1)
+            .max(1);
 
-        if body == 0 || rows == 0 || rows <= body {
+        if rows <= body {
             self.start = 0;
             // Still bound the width: a short list can carry long descriptions.
             return Some(Viewport::new(0, rows.max(1)).with_width(columns));
@@ -471,6 +480,28 @@ mod tests {
             Action::Finish(outcome) => panic!("expected no outcome, got {outcome:?}"),
             Action::Confirm => panic!("expected no outcome, got a confirmation"),
         }
+    }
+
+    #[test]
+    fn a_terminal_shorter_than_the_chrome_still_gets_one_row() {
+        // The whole list would not fit, and neither would the frame: with no
+        // body left the menu draws the row under the cursor, not everything.
+        let mut menu = Menu::new().with_heading("many");
+        let mut group = Group::new("Scripts");
+        for n in 0..40 {
+            group = group.add_item(Item::new(format!("t{n}"), format!("t{n}")));
+        }
+        menu = menu.add_group(group);
+
+        let state = State::default().at(20);
+        let size = Some((menu.chrome_height(state.view(), Some(40)), 40));
+        let viewport = Scroll::default()
+            .advance(&menu, size, &state)
+            .expect("a size was given");
+        let rows = menu.body_height(state.view());
+        let cursor = menu.row_of_item(20, state.view());
+        assert!(viewport.shows(rows, cursor), "the cursor stays in sight");
+        assert_eq!(viewport.window(rows).len(), 1, "and only one row is drawn");
     }
 
     #[test]

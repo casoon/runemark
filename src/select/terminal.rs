@@ -107,8 +107,8 @@ impl RawTerminal {
 
     /// The terminal's size in lines and columns, if it reports one.
     ///
-    /// Queried per frame rather than cached, so resizing the window while the
-    /// menu is open is picked up without a `SIGWINCH` handler.
+    /// Queried per frame rather than cached. There is no `SIGWINCH` handler, so
+    /// a resize is picked up on the next keypress, when the next frame is drawn.
     pub fn size(&self) -> Option<(usize, usize)> {
         // SAFETY: `winsize` is a plain C struct the ioctl fills completely.
         let size = unsafe {

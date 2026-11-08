@@ -522,6 +522,15 @@ impl Viewport {
         self.window(rows).contains(&row)
     }
 
+    /// Whether the body is tall enough to spend lines on scroll indicators.
+    ///
+    /// Two indicators and a row need three lines. Below that the rows win:
+    /// a frame taller than the terminal is worse than not saying how much is
+    /// out of view.
+    fn has_room_for_indicators(self) -> bool {
+        self.height >= 3
+    }
+
     /// The rows to draw, leaving room for whichever indicators are needed.
     ///
     /// An indicator costs a body line, and showing one can be what pushes the
@@ -530,6 +539,12 @@ impl Viewport {
     fn window(self, rows: usize) -> std::ops::Range<usize> {
         if rows <= self.height {
             return 0..rows;
+        }
+
+        if !self.has_room_for_indicators() {
+            let height = self.height.max(1);
+            let start = self.start.min(rows - height);
+            return start..start + height;
         }
 
         let start = self.start.min(rows.saturating_sub(1));
@@ -709,19 +724,40 @@ impl Menu {
         let labels = self.tab_labels();
         let glyphs = Glyphs::of(console.symbol_theme());
         let window = tab_window(&labels, active, columns, glyphs);
+        let mut marks_before = window.start > 0;
+        let mut marks_after = window.end < labels.len();
+
+        // The active tab is never dropped, so when it alone is wider than the
+        // row it is shortened instead — and the markers for the tabs beyond it
+        // give way first, since the label is what the row is for.
+        let mut shortened = None;
+        if let Some(columns) = columns.filter(|_| window.len() == 1) {
+            let room = columns.saturating_sub(MARKER_WIDTH);
+            let marks = usize::from(marks_before) + usize::from(marks_after);
+            let label = &labels[active].0;
+            if label.width() + marks * glyphs.tab_ellipsis() > room {
+                marks_before = false;
+                marks_after = false;
+                shortened = Some(shorten(label, room, glyphs.ellipsis).into_owned());
+            }
+        }
 
         // The row lines up with the entry labels below it, past the marker.
         let mut column = MARKER_WIDTH;
         let mut underline = None;
         write!(writer, "{:MARKER_WIDTH$}", "")?;
 
-        if window.start > 0 {
+        if marks_before {
             console.write_paint(Tone::Muted, glyphs.ellipsis, writer)?;
             write!(writer, "{:TAB_GAP$}", "")?;
             column += glyphs.tab_ellipsis();
         }
         for index in window.clone() {
             let (label, divider) = &labels[index];
+            let label = shortened
+                .as_deref()
+                .filter(|_| index == active)
+                .unwrap_or(label);
             if index > window.start {
                 write!(writer, "{:TAB_GAP$}", "")?;
                 column += TAB_GAP;
@@ -742,7 +778,7 @@ impl Menu {
             }
             column += label.width();
         }
-        if window.end < labels.len() {
+        if marks_after {
             write!(writer, "{:TAB_GAP$}", "")?;
             console.write_paint(Tone::Muted, glyphs.ellipsis, writer)?;
         }
@@ -878,13 +914,17 @@ impl Menu {
         let ellipsis = glyphs.ellipsis;
 
         if let Some(heading) = &self.heading {
-            let note_room = self
-                .note
-                .as_ref()
-                .map_or(0, |note| note.width() + GAP_WIDTH);
+            // The note is shortened to the line first, then the heading to what
+            // it leaves; a note that fit the line unshortened would make the
+            // room below a promise the line did not keep.
+            let note = self.note.as_ref().map(|note| {
+                let room = columns.map_or(usize::MAX, |columns| columns.saturating_sub(GAP_WIDTH));
+                shorten(note, room, ellipsis)
+            });
+            let note_room = note.as_ref().map_or(0, |note| note.width() + GAP_WIDTH);
             let room = columns.map_or(usize::MAX, |columns| columns.saturating_sub(note_room));
             console.write_paint(Tone::Title, shorten(heading, room, ellipsis), writer)?;
-            if let Some(note) = &self.note {
+            if let Some(note) = &note {
                 write!(writer, "  ")?;
                 console.write_paint(Tone::Muted, note, writer)?;
             }
@@ -911,11 +951,17 @@ impl Menu {
         );
         let rows = self.body_rows(view);
         let window = viewport.map_or(0..rows.len(), |viewport| viewport.window(rows.len()));
+        let indicators = viewport.is_none_or(Viewport::has_room_for_indicators);
+        let line_room = columns.unwrap_or(usize::MAX);
 
-        if window.start > 0 {
+        if window.start > 0 && indicators {
             console.write_paint(
                 Tone::Muted,
-                format!("  {} {} more", glyphs.above, window.start),
+                shorten(
+                    &format!("  {} {} more", glyphs.above, window.start),
+                    line_room,
+                    ellipsis,
+                ),
                 writer,
             )?;
             writeln!(writer)?;
@@ -974,15 +1020,23 @@ impl Menu {
         }
 
         if rows.is_empty() && query.is_some() {
-            console.write_paint(Tone::Muted, "  no matches", writer)?;
+            console.write_paint(
+                Tone::Muted,
+                shorten("  no matches", line_room, ellipsis),
+                writer,
+            )?;
             writeln!(writer)?;
         }
 
         let remaining = rows.len() - window.end;
-        if remaining > 0 {
+        if remaining > 0 && indicators {
             console.write_paint(
                 Tone::Muted,
-                format!("  {} {remaining} more", glyphs.below),
+                shorten(
+                    &format!("  {} {remaining} more", glyphs.below),
+                    line_room,
+                    ellipsis,
+                ),
                 writer,
             )?;
             writeln!(writer)?;
@@ -1016,7 +1070,11 @@ impl Menu {
                         }
                         console.write_paint(Tone::Success, key, writer)?;
                         write!(writer, " ")?;
-                        console.write_paint(Tone::Muted, label, writer)?;
+                        // A key alone on its line can still be wider than the
+                        // terminal; there is nowhere narrower to put it, so
+                        // its label gives way.
+                        let room = line_room.saturating_sub(key.width() + 1);
+                        console.write_paint(Tone::Muted, shorten(label, room, ellipsis), writer)?;
                     }
                     writeln!(writer)?;
                 }
@@ -2094,6 +2152,103 @@ mod tests {
     }
 
     #[test]
+    fn nothing_exceeds_a_very_narrow_terminal() {
+        // Anything that wraps desynchronises the redraw's line count, so every
+        // line has to be cut to the width rather than just most of them.
+        let menu = tabbed(5)
+            .with_note("a note far longer than the terminal is wide")
+            .add_hint(Hint::new('H', "A hint label far too long to fit"))
+            .add_group(
+                Group::new("An extraordinarily long group name")
+                    .add_item(Item::new("x", "x").with_description("and a long description")),
+            );
+
+        for console in [plain(), ascii()] {
+            for columns in [10, 12, 16, 20, 30] {
+                for view in [on_tab(5), on_tab(2), searching("a"), searching("zzz")] {
+                    let shown = crate::internal::collect_to_string(|buf| {
+                        menu.write_frame(
+                            buf,
+                            console,
+                            Some(0),
+                            Some(Viewport::new(0, 999).with_width(Some(columns))),
+                            view,
+                        )
+                    });
+                    for line in shown.lines() {
+                        assert!(
+                            line.width() <= columns,
+                            "width {columns}, view {view:?}: {line:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_ticking_footer_key_wider_than_the_terminal_is_shortened() {
+        let checked: BTreeSet<String> = BTreeSet::new();
+        let view = View {
+            checked: Some(&checked),
+            ..View::default()
+        };
+        let menu = long_menu(20);
+        let shown = crate::internal::collect_to_string(|buf| {
+            menu.write_frame(
+                buf,
+                plain(),
+                Some(0),
+                Some(Viewport::new(0, 999).with_width(Some(8))),
+                view,
+            )
+        });
+        for line in shown.lines() {
+            assert!(line.width() <= 8, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn a_body_too_short_for_indicators_draws_exactly_the_rows_it_has() {
+        // Two indicators and a row need three lines. Below that the frame
+        // would be taller than the terminal it was sized for.
+        let menu = long_menu(40);
+        let rows = menu.body_height(flat());
+        let chrome = menu.chrome_height(flat(), Some(40));
+
+        for height in [1, 2] {
+            for start in [0, 10, 38, 39] {
+                let viewport = Viewport::new(start, height).with_width(Some(40));
+                let window = viewport.window(rows);
+                assert_eq!(window.len(), height, "height {height}, start {start}");
+                let shown = crate::internal::collect_to_string(|buf| {
+                    menu.write_frame(buf, plain(), Some(window.start), Some(viewport), flat())
+                });
+                assert_eq!(
+                    shown.lines().count(),
+                    chrome + height,
+                    "height {height}, start {start}:\n{shown}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_short_window_still_scrolls_to_the_cursor() {
+        let menu = long_menu(40);
+        let rows = menu.body_height(flat());
+        for height in [1, 2] {
+            for cursor in 0..rows {
+                let mut start = 0;
+                while start < rows - 1 && !Viewport::new(start, height).shows(rows, cursor) {
+                    start += 1;
+                }
+                assert!(Viewport::new(start, height).shows(rows, cursor));
+            }
+        }
+    }
+
+    #[test]
     fn a_long_query_cannot_wrap_the_frame() {
         let menu = tabbed(3);
         let query = "a".repeat(200);
@@ -2282,7 +2437,7 @@ mod tests {
     fn an_ascii_tab_row_never_exceeds_the_given_width() {
         // The ellipsis is three columns there, and the window has to know.
         let menu = tabbed(9);
-        for columns in [30, 45, 80, 120] {
+        for columns in [20, 30, 45, 80, 120] {
             let shown = crate::internal::collect_to_string(|buf| {
                 menu.write_frame(
                     buf,

@@ -283,9 +283,16 @@ mark what is out of view. `Layout::Tabs` is the other answer to the same problem
 whose groups mean something: it pages by group instead of scrolling past every one of them. The window moves the least amount that keeps the cursor visible, so
 short cursor moves do not slide the whole screen.
 
-The size comes from the terminal itself, re-read on every frame, so resizing the window
-while the menu is open is picked up without a `SIGWINCH` handler. A terminal that reports no
-height gets the whole menu.
+The size comes from the terminal itself and is re-read every time a frame is drawn. There is
+no `SIGWINCH` handler, and the menu waits on a key between frames, so **a resize is picked up on
+the next keypress**, not while the menu sits idle. The terminal may reflow the frame already on
+screen in the meantime, so the redraw that follows can leave a stale line behind; the next key
+redraws it cleanly. A terminal that reports no height gets the whole menu.
+
+Lines that cannot be cut to fit are shortened, not left to wrap: the active tab, the heading
+note, and a footer key's label all give way before the line does. A terminal shorter than the
+heading and footer still gets one row of entries, and with fewer than three rows to spare the
+`↑ N more` / `↓ N more` lines are left out so the rows can have the room.
 
 `Menu::render` is neither windowed nor shortened. A pipe or a file has no height or width to
 run out of, and cutting there would lose information for no reason.
