@@ -216,6 +216,9 @@ pub fn wait(input: RawFd, watch: &ResizeWatch) -> io::Result<Ready> {
 /// timeout to ask what is ready right now.
 fn select_ready(input: RawFd, watch: &ResizeWatch, timeout: Option<Duration>) -> io::Result<Ready> {
     let pipe = watch.fd();
+    // `suseconds_t` is `i32` on macOS and `i64` on Linux, so the conversion only
+    // can fail on one of them; clippy sees the Linux width on CI.
+    #[allow(clippy::unnecessary_fallible_conversions)]
     let mut limit = timeout.map(|timeout| libc::timeval {
         tv_sec: libc::time_t::try_from(timeout.as_secs()).unwrap_or(libc::time_t::MAX),
         tv_usec: libc::suseconds_t::try_from(timeout.subsec_micros()).unwrap_or(0),
