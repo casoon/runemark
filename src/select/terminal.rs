@@ -1,7 +1,7 @@
 //! Raw mode and key decoding over `termios`, without a terminal crate.
 //!
 //! The menu needs very little from the terminal: raw mode, four escape
-//! sequences, and six keys. All of it is a thin layer over `libc`.
+//! sequences, and a handful of keys. All of it is a thin layer over `libc`.
 //!
 //! Input comes from `/dev/tty` rather than stdin, so the menu still works when
 //! the caller's stdin is redirected — `opi < /dev/null` should not disable
@@ -30,6 +30,10 @@ pub enum Key {
     Down,
     Left,
     Right,
+    Home,
+    End,
+    PageUp,
+    PageDown,
     /// Tab, and Shift-Tab as [`Key::BackTab`].
     Tab,
     BackTab,
@@ -97,7 +101,10 @@ impl RawTerminal {
             // Block until at least one byte arrives; no inter-byte timer.
             raw.c_cc[libc::VMIN] = 1;
             raw.c_cc[libc::VTIME] = 0;
-            if libc::tcsetattr(fd, libc::TCSANOW, &raw) != 0 {
+            // `TCSAFLUSH` drops what was typed before the menu opened, so a stray
+            // Enter does not select the first entry. Only here: the later
+            // timing changes must keep whatever has been typed since.
+            if libc::tcsetattr(fd, libc::TCSAFLUSH, &raw) != 0 {
                 return Err(io::Error::last_os_error());
             }
         }
@@ -241,12 +248,29 @@ fn read_escape(source: &mut impl ByteSource) -> io::Result<Key> {
         b'B' => Ok(Key::Down),
         b'C' => Ok(Key::Right),
         b'D' => Ok(Key::Left),
+        b'H' => Ok(Key::Home),
+        b'F' => Ok(Key::End),
         // Shift-Tab. It is the one CSI sequence here with no parameters,
         // so it is recognised beside the cursor keys rather than skipped.
         b'Z' => Ok(Key::BackTab),
-        // A parameterised sequence such as `ESC [ 1 ; 2 A` or `ESC [ 5 ~`.
-        // Consume it so its tail is not mistaken for typed characters.
-        b'0'..=b'9' | b';' => {
+        // `ESC [ 5 ~` and its kin: one digit and a tilde name a key. Anything
+        // longer, such as `ESC [ 1 ; 2 A`, is consumed so its tail is not
+        // mistaken for typed characters.
+        b'0'..=b'9' => match source.read_byte()? {
+            Some(b'~') => Ok(match third {
+                b'1' => Key::Home,
+                b'4' => Key::End,
+                b'5' => Key::PageUp,
+                b'6' => Key::PageDown,
+                _ => Key::Other,
+            }),
+            Some(0x40..=0x7e) | None => Ok(Key::Other),
+            Some(_) => {
+                skip_sequence_tail(source)?;
+                Ok(Key::Other)
+            }
+        },
+        b';' => {
             skip_sequence_tail(source)?;
             Ok(Key::Other)
         }
@@ -362,6 +386,43 @@ mod tests {
     }
 
     #[test]
+    fn home_and_end_decode_in_both_encodings() {
+        assert_eq!(key(b"\x1b[H"), Key::Home);
+        assert_eq!(key(b"\x1b[F"), Key::End);
+        assert_eq!(key(b"\x1bOH"), Key::Home);
+        assert_eq!(key(b"\x1bOF"), Key::End);
+        assert_eq!(key(b"\x1b[1~"), Key::Home);
+        assert_eq!(key(b"\x1b[4~"), Key::End);
+    }
+
+    #[test]
+    fn page_up_and_page_down_decode() {
+        assert_eq!(decode(b"\x1b[5~"), (Key::PageUp, vec![]));
+        assert_eq!(decode(b"\x1b[6~"), (Key::PageDown, vec![]));
+    }
+
+    #[test]
+    fn the_tilde_keys_leave_what_follows_for_the_next_key() {
+        assert_eq!(decode(b"\x1b[5~x"), (Key::PageUp, vec![b'x']));
+    }
+
+    #[test]
+    fn other_tilde_keys_and_modified_ones_are_skipped_whole() {
+        // Delete and Insert mean nothing here; a modified Home is not Home.
+        assert_eq!(decode(b"\x1b[3~"), (Key::Other, vec![]));
+        assert_eq!(decode(b"\x1b[2~"), (Key::Other, vec![]));
+        assert_eq!(decode(b"\x1b[1;5H"), (Key::Other, vec![]));
+        assert_eq!(decode(b"\x1b[15~"), (Key::Other, vec![]));
+        assert_eq!(decode(b"\x1b[5;2~"), (Key::Other, vec![]));
+    }
+
+    #[test]
+    fn ctrl_z_arrives_as_a_key_that_means_nothing() {
+        // Raw mode clears ISIG, so the terminal does not suspend the menu.
+        assert_eq!(key(&[0x1a]), Key::Other);
+    }
+
+    #[test]
     fn shift_tab_is_back_tab() {
         assert_eq!(key(b"\x1b[Z"), Key::BackTab);
     }
@@ -370,8 +431,8 @@ mod tests {
     fn a_parameterised_sequence_is_skipped_whole() {
         // Its tail must not be left behind to be read as typed characters.
         assert_eq!(decode(b"\x1b[1;2A"), (Key::Other, vec![]));
-        assert_eq!(decode(b"\x1b[5~"), (Key::Other, vec![]));
-        assert_eq!(decode(b"\x1b[5~x"), (Key::Other, vec![b'x']));
+        assert_eq!(decode(b"\x1b[1;2B"), (Key::Other, vec![]));
+        assert_eq!(decode(b"\x1b[1;2Bx"), (Key::Other, vec![b'x']));
     }
 
     #[test]

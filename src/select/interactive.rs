@@ -31,6 +31,10 @@ impl Drop for HiddenCursor {
     }
 }
 
+/// How many entries `PageUp` and `PageDown` move. A fixed step: deciding a
+/// key needs no terminal, and the viewport follows the cursor wherever it lands.
+const PAGE: usize = 10;
+
 impl Menu {
     /// Runs the menu, returning what the user did.
     ///
@@ -178,6 +182,12 @@ impl Menu {
             } else {
                 state.index + 1
             })),
+            // Jumps stop at the ends instead of wrapping: arriving at the end
+            // is the point of them, and wrapping a page would undo it.
+            Key::Home => Action::Update(state.at(0)),
+            Key::End => Action::Update(state.at(last)),
+            Key::PageUp => Action::Update(state.at(state.index.saturating_sub(PAGE))),
+            Key::PageDown => Action::Update(state.at((state.index + PAGE).min(last))),
             Key::Enter if state.checked.is_some() => Action::Confirm,
             Key::Enter => matches.get(state.index).map_or(Action::Ignore, |item| {
                 Action::Finish(Outcome::Selected(item.id.clone()))
@@ -703,6 +713,48 @@ mod tests {
         assert_eq!(after(&menu, &State::default().at(last), Key::Down).index, 0);
         assert_eq!(after(&menu, &State::default().at(2), Key::Up).index, 1);
         assert_eq!(after(&menu, &State::default().at(2), Key::Down).index, 3);
+    }
+
+    #[test]
+    fn home_and_end_jump_to_the_first_and_last_entry() {
+        let menu = scripts(30);
+        let middle = State::default().at(12);
+        assert_eq!(after(&menu, &middle, Key::Home).index, 0);
+        assert_eq!(after(&menu, &middle, Key::End).index, 29);
+    }
+
+    #[test]
+    fn the_page_keys_move_a_page_and_stop_at_the_ends() {
+        let menu = scripts(30);
+        let state = State::default().at(12);
+        assert_eq!(after(&menu, &state, Key::PageDown).index, 12 + PAGE);
+        assert_eq!(after(&menu, &state, Key::PageUp).index, 12 - PAGE);
+        // No wrapping: a page past the end is the end.
+        assert_eq!(after(&menu, &state.at(25), Key::PageDown).index, 29);
+        assert_eq!(after(&menu, &state.at(3), Key::PageUp).index, 0);
+        assert_eq!(after(&menu, &state.at(29), Key::PageDown).index, 29);
+        assert_eq!(after(&menu, &state.at(0), Key::PageUp).index, 0);
+    }
+
+    #[test]
+    fn the_jump_keys_work_on_the_active_tab_and_inside_a_search() {
+        let menu = tabbed();
+        let on_second = after(&menu, &State::default(), Key::Right);
+        assert_eq!(after(&menu, &on_second, Key::End).index, 1, "two to a tab");
+
+        let menu = scripts(30);
+        let state = State::default().searching("t2".into());
+        let matches = menu.matching_items(state.view()).len();
+        assert_eq!(after(&menu, &state, Key::End).index, matches - 1);
+    }
+
+    #[test]
+    fn the_jump_keys_over_no_matches_stay_put() {
+        let menu = scripts(30);
+        let nothing = State::default().searching("zzzz".into());
+        for key in [Key::Home, Key::End, Key::PageUp, Key::PageDown] {
+            assert_eq!(after(&menu, &nothing, key).index, 0);
+        }
     }
 
     #[test]

@@ -72,6 +72,8 @@ rest of the crate: the application owns the decision about its own streams.
 | Key | Effect |
 | --- | --- |
 | `↑` `↓` | Move the cursor, wrapping at both ends |
+| `Home` `End` | Jump to the first or last entry |
+| `PgUp` `PgDn` | Move ten entries, stopping at the ends instead of wrapping |
 | `←` `→`, `Tab`, `Shift-Tab` | Switch groups, with `Layout::Tabs` |
 | `1`–`9` | Jump to that group, with `Layout::Tabs` |
 | `Enter` | Select, returning `Outcome::Selected` |
@@ -80,10 +82,18 @@ rest of the crate: the application owns the decision about its own streams.
 | `Esc`, `q` | `Outcome::Cancelled` |
 | `Ctrl-C` | `Outcome::Cancelled` |
 
+`Home`, `End`, `PgUp` and `PgDn` work in both layouts and inside a filter, on the entries
+currently shown. Letters such as `j` and `k` are deliberately not cursor keys: a hint key wins
+over the built-ins, and they would collide with the hints a menu binds.
+
 A hint key wins over the built-in `q`, so a menu is free to bind `q` itself. `/` is reserved
 for the filter and cannot be bound. A tabbed menu has given its digits away: they reach its
 groups, and a hint bound to one is not seen there — the tab is the one of the two the user
 can see on screen.
+
+Two things follow from raw mode. `Ctrl-Z` cannot suspend the menu: raw mode turns off the
+terminal's signal keys, so it arrives as a key the menu ignores. And keys typed before the menu
+opened are discarded, so a stray `Enter` does not select the first entry.
 
 ## Picking several
 
@@ -333,7 +343,7 @@ a key event and is reported as `Outcome::Cancelled`.
 ## Why not a terminal crate
 
 The surface a menu needs is small: raw mode, `\x1b[?25l` / `\x1b[?25h` for the cursor,
-`\x1b[{n}F` and `\x1b[J` for redrawing in place, and six keys. Pulling in a cross-platform
+`\x1b[{n}F` and `\x1b[J` for redrawing in place, and a handful of keys. Pulling in a cross-platform
 terminal stack for that costs far more than it returns — 28 packages against the two runemark
 now has with the feature on.
 
