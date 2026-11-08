@@ -19,6 +19,10 @@ Consumers work with plain objects and strings, never with Rust types or builders
   rendering a partial report.
 - `color: 'auto'` checks stdout unless `stream: 'stderr'` is passed on the console, render, error
   and diff options; an explicit `isTerminal` wins over both. Progress always uses stderr.
+- Numbers that map to Rust `u32` (`line`, `column`, `totalCount`, `maxCompactSamples`, `width`,
+  progress `total` and `position`) must be integers from 0 to 4294967295. Anything else throws an
+  error naming the field instead of wrapping. `location.column` without `location.line` throws.
+- Defaults the Rust API makes you spell out: a finding's `tone` is `'warning'`, a badge's `'info'`.
 - A metric `trend` is validated even without a `delta`: an unknown value throws, a valid one
   without a `delta` is accepted and renders nothing, as in the Rust core.
 - Rust enums, public fields and builder internals are deliberately not exported.

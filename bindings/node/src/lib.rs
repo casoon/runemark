@@ -26,7 +26,7 @@ pub struct JsRenderOptions {
     pub symbols: Option<String>,
     pub is_terminal: Option<bool>,
     pub stream: Option<String>,
-    pub width: Option<u32>,
+    pub width: Option<f64>,
 }
 
 #[napi(object)]
@@ -47,8 +47,8 @@ pub struct JsMetric {
 pub struct JsLocation {
     pub kind: String,
     pub value: String,
-    pub line: Option<u32>,
-    pub column: Option<u32>,
+    pub line: Option<f64>,
+    pub column: Option<f64>,
 }
 
 #[napi(object)]
@@ -72,7 +72,7 @@ pub struct JsFinding {
 pub struct JsFindingGroup {
     pub title: String,
     pub findings: Option<Vec<JsFinding>>,
-    pub total_count: Option<u32>,
+    pub total_count: Option<f64>,
     pub advisory: Option<bool>,
 }
 
@@ -84,14 +84,14 @@ pub struct JsNextStep {
 
 #[napi(object)]
 pub struct JsReportInput {
-    pub schema_version: Option<u32>,
+    pub schema_version: Option<f64>,
     pub title: String,
     pub verdict: String,
     pub metrics: Option<Vec<JsMetric>>,
     pub groups: Option<Vec<JsFindingGroup>>,
     pub next_steps: Option<Vec<JsNextStep>>,
     pub detail_level: Option<String>,
-    pub max_compact_samples: Option<u32>,
+    pub max_compact_samples: Option<f64>,
 }
 
 #[napi(object)]
@@ -208,13 +208,17 @@ impl NativeProgress {
     }
 
     #[napi]
-    pub fn start(&self, total: u32, message: String) {
-        self.progress.start(u64::from(total), &message);
+    pub fn start(&self, total: f64, message: String) -> Result<()> {
+        self.progress
+            .start(u64::from(to_u32("total", total)?), &message);
+        Ok(())
     }
 
     #[napi]
-    pub fn advance(&self, position: u32, message: String) {
-        self.progress.advance(u64::from(position), &message);
+    pub fn advance(&self, position: f64, message: String) -> Result<()> {
+        self.progress
+            .advance(u64::from(to_u32("position", position)?), &message);
+        Ok(())
     }
 
     #[napi]
@@ -287,10 +291,10 @@ fn render_context(options: Option<JsRenderOptions>) -> Result<(Console, RenderOp
         options.is_terminal,
         options.stream.as_deref(),
     )?;
-    let layout = options
-        .width
-        .map(|width| RenderOptions::new().with_width(width as usize))
-        .unwrap_or_default();
+    let layout = match options.width {
+        Some(width) => RenderOptions::new().with_width(to_u32("width", width)? as usize),
+        None => RenderOptions::default(),
+    };
     Ok((console, layout))
 }
 
@@ -323,7 +327,7 @@ fn console_from_parts(
 }
 
 fn report_from_input(input: JsReportInput) -> Result<Report> {
-    if input.schema_version.unwrap_or(1) != 1 {
+    if input.schema_version.unwrap_or(1.0) != 1.0 {
         return Err(Error::new(
             Status::InvalidArg,
             "unsupported ReportInput schemaVersion; expected 1",
@@ -338,7 +342,7 @@ fn report_from_input(input: JsReportInput) -> Result<Report> {
     let mut report =
         Report::new(input.title, parse_verdict(&input.verdict)?).with_detail_level(detail_level);
     if let Some(max_samples) = input.max_compact_samples {
-        report.max_compact_samples = max_samples as usize;
+        report.max_compact_samples = to_u32("maxCompactSamples", max_samples)? as usize;
     }
     for metric in input.metrics.unwrap_or_default() {
         let mut output = runemark::Metric::new(metric.key, metric.value);
@@ -378,7 +382,7 @@ fn report_from_input(input: JsReportInput) -> Result<Report> {
 fn group_from_input(input: JsFindingGroup) -> Result<FindingGroup> {
     let mut group = FindingGroup::new(input.title).with_advisory(input.advisory.unwrap_or(false));
     if let Some(total_count) = input.total_count {
-        group = group.with_total_count(total_count as usize);
+        group = group.with_total_count(to_u32("totalCount", total_count)? as usize);
     }
     for finding in input.findings.unwrap_or_default() {
         group = group.add_finding(finding_from_input(finding)?);
@@ -418,8 +422,22 @@ fn finding_from_input(input: JsFinding) -> Result<Finding> {
 }
 
 fn location_from_input(input: JsLocation) -> Result<Location> {
+    let line = input
+        .line
+        .map(|line| to_u32("location.line", line))
+        .transpose()?;
+    let column = input
+        .column
+        .map(|column| to_u32("location.column", column))
+        .transpose()?;
+    if column.is_some() && line.is_none() {
+        return Err(Error::new(
+            Status::InvalidArg,
+            "location.column requires location.line",
+        ));
+    }
     match input.kind.as_str() {
-        "file" => match (input.line, input.column) {
+        "file" => match (line, column) {
             (Some(line), Some(column)) => Ok(Location::file_line_col(
                 input.value,
                 line as usize,
@@ -466,6 +484,22 @@ fn parse_file_action(value: &str) -> Result<FileAction> {
         "deleted" => Ok(FileAction::Deleted),
         "renamed" => Ok(FileAction::Renamed),
         _ => Err(invalid_value("file action", value)),
+    }
+}
+
+/// JavaScript numbers arrive as `f64`; reject anything a `u32` cannot hold
+/// exactly instead of letting a cast wrap it.
+fn to_u32(field: &str, value: f64) -> Result<u32> {
+    if value.fract() == 0.0 && (0.0..=f64::from(u32::MAX)).contains(&value) {
+        Ok(value as u32)
+    } else {
+        Err(Error::new(
+            Status::InvalidArg,
+            format!(
+                "invalid {field}: {value}; expected an integer from 0 to {}",
+                u32::MAX
+            ),
+        ))
     }
 }
 
@@ -530,7 +564,7 @@ mod tests {
         let loc = location_from_input(JsLocation {
             kind: "file".into(),
             value: "src/main.rs".into(),
-            line: Some(10),
+            line: Some(10.0),
             column: None,
         })
         .unwrap();
@@ -539,8 +573,8 @@ mod tests {
         let loc = location_from_input(JsLocation {
             kind: "file".into(),
             value: "src/main.rs".into(),
-            line: Some(10),
-            column: Some(4),
+            line: Some(10.0),
+            column: Some(4.0),
         })
         .unwrap();
         assert_eq!(loc, Location::file_line_col("src/main.rs", 10, 4));
@@ -583,9 +617,33 @@ mod tests {
     }
 
     #[test]
+    fn test_to_u32_rejects_out_of_range_and_fractions() {
+        assert_eq!(to_u32("n", 0.0).unwrap(), 0);
+        assert_eq!(to_u32("n", 4_294_967_295.0).unwrap(), u32::MAX);
+        for bad in [-1.0, 1.5, 4_294_967_296.0, f64::NAN, f64::INFINITY] {
+            let err = to_u32("n", bad).unwrap_err();
+            assert_eq!(err.status, Status::InvalidArg);
+            assert!(err.to_string().contains("invalid n:"));
+        }
+    }
+
+    #[test]
+    fn test_location_column_requires_line() {
+        let err = location_from_input(JsLocation {
+            kind: "file".into(),
+            value: "src/main.rs".into(),
+            line: None,
+            column: Some(4.0),
+        })
+        .unwrap_err();
+        assert_eq!(err.status, Status::InvalidArg);
+        assert!(err.to_string().contains("column requires location.line"));
+    }
+
+    #[test]
     fn test_report_from_input_schema_version_and_options() {
         let err = report_from_input(JsReportInput {
-            schema_version: Some(2),
+            schema_version: Some(2.0),
             title: "Future".into(),
             verdict: "passed".into(),
             metrics: None,
@@ -599,7 +657,7 @@ mod tests {
         assert!(err.to_string().contains("unsupported ReportInput schemaVersion"));
 
         let report = report_from_input(JsReportInput {
-            schema_version: Some(1),
+            schema_version: Some(1.0),
             title: "Valid".into(),
             verdict: "passed".into(),
             metrics: Some(vec![JsMetric {
@@ -624,7 +682,7 @@ mod tests {
                         tone: Some("success".into()),
                     }),
                 }]),
-                total_count: Some(1),
+                total_count: Some(1.0),
                 advisory: Some(false),
             }]),
             next_steps: Some(vec![JsNextStep {
@@ -632,7 +690,7 @@ mod tests {
                 command: Some("deploy".into()),
             }]),
             detail_level: Some("detailed".into()),
-            max_compact_samples: Some(5),
+            max_compact_samples: Some(5.0),
         })
         .unwrap();
         assert_eq!(report.title, "Valid");
@@ -667,7 +725,7 @@ mod tests {
     #[test]
     fn test_report_from_input_invalid_enums() {
         let err = report_from_input(JsReportInput {
-            schema_version: Some(1),
+            schema_version: Some(1.0),
             title: "Test".into(),
             verdict: "passed".into(),
             metrics: Some(vec![JsMetric {

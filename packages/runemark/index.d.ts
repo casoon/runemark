@@ -19,23 +19,28 @@ export interface ConsoleOptions {
 }
 
 export interface RenderOptions extends ConsoleOptions {
+  /** Columns available for layout. An integer from 0 to 4294967295; 0 means unconstrained. */
   width?: number
 }
 
 export interface LocationInput {
   kind: 'file' | 'url' | 'selector' | 'artifact'
   value: string
+  /** Integer from 0 to 4294967295; only `kind: 'file'` renders it. Other values throw. */
   line?: number
+  /** Integer from 0 to 4294967295; needs `line`, otherwise the input throws. */
   column?: number
 }
 
 export interface BadgeInput {
   label: string
+  /** Defaults to `'info'`. */
   tone?: Tone
 }
 
 export interface FindingInput {
   message: string
+  /** Defaults to `'warning'`. */
   tone?: Tone
   location?: LocationInput
   ruleId?: string
@@ -47,6 +52,7 @@ export interface FindingInput {
 export interface FindingGroupInput {
   title: string
   findings?: FindingInput[]
+  /** Findings in the whole group, when `findings` is only a sample. Integer from 0 to 4294967295. */
   totalCount?: number
   advisory?: boolean
 }
@@ -86,6 +92,7 @@ export interface ReportInput {
   groups?: FindingGroupInput[]
   nextSteps?: NextStepInput[]
   detailLevel?: DetailLevel
+  /** Findings shown per group at the compact level. Integer from 0 to 4294967295; defaults to 3. */
   maxCompactSamples?: number
 }
 
@@ -137,6 +144,7 @@ export class RunemarkReport {
 
 export class RunemarkProgress {
   constructor(options?: ProgressOptions)
+  /** `total` and `position` are integers from 0 to 4294967295; anything else throws. */
   start(total: number, message: string): void
   advance(position: number, message: string): void
   notice(tone: Tone, message: string): void
