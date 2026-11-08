@@ -8,6 +8,7 @@ import {
   Verdict,
   renderDiff,
   renderError,
+  renderReport,
 } from '../index.cjs'
 
 const plain = { color: 'never', symbols: 'ascii', isTerminal: false }
@@ -189,4 +190,18 @@ test('report rendering has exact byte-for-byte parity with Rust core', () => {
     '    $ cargo audit fix\n'
 
   assert.equal(rendered, expected)
+})
+
+test('metric trend is validated with and without a delta', () => {
+  const render = (metric) =>
+    renderReport({ schemaVersion: 1, title: 'T', verdict: Verdict.Passed, metrics: [metric] }, plain)
+
+  assert.throws(() => render({ key: 'k', value: 'v', trend: 'bogus' }), /invalid metric trend: bogus/)
+  assert.throws(
+    () => render({ key: 'k', value: 'v', trend: 'bogus', delta: '+1' }),
+    /invalid metric trend: bogus/,
+  )
+  // A valid trend without a delta renders no delta text.
+  assert.match(render({ key: 'k', value: 'v', trend: 'positive' }), /^ {2}k: v$/m)
+  assert.match(render({ key: 'k', value: 'v', trend: 'positive', delta: '+1' }), /k: v \(\+1\)/)
 })

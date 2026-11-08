@@ -337,15 +337,16 @@ fn report_from_input(input: JsReportInput) -> Result<Report> {
         if let Some(tone) = metric.tone {
             output = output.with_tone(parse_tone(&tone)?);
         }
-        if let Some(delta) = metric.delta {
-            let trend = match metric.trend.as_deref().unwrap_or("neutral") {
-                "positive" => runemark::Trend::Positive,
-                "negative" => runemark::Trend::Negative,
-                "neutral" => runemark::Trend::Neutral,
-                value => return Err(invalid_value("metric trend", value)),
-            };
-            output = output.with_trend(trend, delta);
-        }
+        // Validated even without a delta; a trend alone renders nothing.
+        let trend = match metric.trend.as_deref() {
+            None => None,
+            Some("positive") => Some(runemark::Trend::Positive),
+            Some("negative") => Some(runemark::Trend::Negative),
+            Some("neutral") => Some(runemark::Trend::Neutral),
+            Some(value) => return Err(invalid_value("metric trend", value)),
+        };
+        output.trend = trend;
+        output.delta = metric.delta;
         report = report.add_metric(output);
     }
     for group in input.groups.unwrap_or_default() {
@@ -624,6 +625,30 @@ mod tests {
         assert_eq!(report.title, "Valid");
         assert_eq!(report.detail_level, DetailLevel::Detailed);
         assert_eq!(report.max_compact_samples, 5);
+    }
+
+    #[test]
+    fn test_metric_trend_validated_without_delta() {
+        let input = |trend: &str| JsReportInput {
+            schema_version: None,
+            title: "T".into(),
+            verdict: "passed".into(),
+            metrics: Some(vec![JsMetric {
+                key: "K".into(),
+                value: "V".into(),
+                verdict: None,
+                tone: None,
+                trend: Some(trend.into()),
+                delta: None,
+            }]),
+            groups: None,
+            next_steps: None,
+            detail_level: None,
+            max_compact_samples: None,
+        };
+        assert!(report_from_input(input("positive")).is_ok());
+        let err = report_from_input(input("bogus")).unwrap_err();
+        assert!(err.to_string().contains("invalid metric trend: bogus"));
     }
 
     #[test]

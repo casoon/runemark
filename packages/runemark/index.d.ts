@@ -55,7 +55,13 @@ export interface MetricInput {
    */
   verdict?: Verdict
   tone?: Tone
+  /**
+   * Colours the `delta` text. An unknown value throws. Without a `delta` a
+   * valid trend is accepted and renders nothing; with a `delta` and no trend,
+   * `'neutral'` applies.
+   */
   trend?: 'positive' | 'negative' | 'neutral'
+  /** Shown in parentheses after the value, for example `+3%`. */
   delta?: string
 }
 
