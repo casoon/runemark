@@ -42,6 +42,18 @@ pub enum Key {
     Other,
 }
 
+/// Whether failing to open `/dev/tty` with `error` means there is no terminal.
+///
+/// `ENXIO` is how a process detached from its terminal (after `setsid`) is
+/// refused. Rust reports it as an uncategorised error, so the kind alone
+/// cannot recognise it.
+fn means_no_terminal(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+    ) || error.raw_os_error() == Some(libc::ENXIO)
+}
+
 /// The terminal, in raw mode for as long as this value lives.
 ///
 /// Restoring is tied to the destructor so it happens on every path out,
@@ -63,14 +75,7 @@ impl RawTerminal {
     pub fn acquire() -> io::Result<Option<Self>> {
         let tty = match File::options().read(true).write(true).open("/dev/tty") {
             Ok(tty) => tty,
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
-                ) =>
-            {
-                return Ok(None);
-            }
+            Err(error) if means_no_terminal(&error) => return Ok(None),
             Err(error) => return Err(error),
         };
         let fd = tty.as_raw_fd();
@@ -294,5 +299,26 @@ impl TimedReads<'_> {
 impl Drop for TimedReads<'_> {
     fn drop(&mut self) {
         let _ = self.terminal.set_read_timing(1, 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_controlling_terminal_is_not_an_error() {
+        assert!(means_no_terminal(&io::Error::from_raw_os_error(
+            libc::ENXIO
+        )));
+        assert!(means_no_terminal(&io::Error::from(io::ErrorKind::NotFound)));
+        assert!(means_no_terminal(&io::Error::from(
+            io::ErrorKind::PermissionDenied
+        )));
+    }
+
+    #[test]
+    fn other_failures_to_open_the_terminal_are_reported() {
+        assert!(!means_no_terminal(&io::Error::from_raw_os_error(libc::EIO)));
     }
 }
