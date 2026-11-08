@@ -175,90 +175,121 @@ impl RawTerminal {
 
     /// Blocks until the next key.
     pub fn read_key(&self) -> io::Result<Key> {
-        // In blocking mode a zero-byte read means the terminal went away.
-        // Treating that as a cancel closes the menu rather than spinning.
-        let Some(byte) = self.read_byte()? else {
-            return Ok(Key::Interrupt);
-        };
+        let first = self.read_byte()?;
+        decode_key(first, || self.timed_reads())
+    }
+}
 
-        match byte {
-            0x03 => Ok(Key::Interrupt),
-            b'\r' | b'\n' => Ok(Key::Enter),
-            0x09 => Ok(Key::Tab),
-            0x1b => self.read_escape(),
-            // Terminals send either for Backspace depending on their settings.
-            0x08 | 0x7f => Ok(Key::Backspace),
-            // C0 controls other than the ones above carry no meaning here.
-            0x00..=0x1f => Ok(Key::Other),
-            _ => self.read_utf8(byte),
+/// Where the bytes after a key's first one come from.
+///
+/// A trait rather than the terminal itself so the decoder runs against a
+/// scripted byte stream in tests. A read that yields `None` is a timeout or a
+/// closed stream: no more bytes are coming.
+trait ByteSource {
+    fn read_byte(&mut self) -> io::Result<Option<u8>>;
+}
+
+/// Decodes the key that starts with `first`.
+///
+/// `first` is `None` when a blocking read returned nothing, which means the
+/// terminal went away. Treating that as a cancel closes the menu rather than
+/// spinning. `follow_up` supplies the bounded source for the bytes after the
+/// first, and is only called for keys that have any.
+fn decode_key<S: ByteSource>(
+    first: Option<u8>,
+    follow_up: impl FnOnce() -> io::Result<S>,
+) -> io::Result<Key> {
+    let Some(byte) = first else {
+        return Ok(Key::Interrupt);
+    };
+
+    match byte {
+        0x03 => Ok(Key::Interrupt),
+        b'\r' | b'\n' => Ok(Key::Enter),
+        0x09 => Ok(Key::Tab),
+        0x1b => read_escape(&mut follow_up()?),
+        // Terminals send either for Backspace depending on their settings.
+        0x08 | 0x7f => Ok(Key::Backspace),
+        // C0 controls other than the ones above carry no meaning here.
+        0x00..=0x1f => Ok(Key::Other),
+        _ => read_utf8(byte, &mut follow_up()?),
+    }
+}
+
+/// Decodes what follows `0x1b`.
+///
+/// A bare `Escape` and the start of an arrow key are the same first byte;
+/// only a bounded read tells them apart.
+fn read_escape(source: &mut impl ByteSource) -> io::Result<Key> {
+    let Some(second) = source.read_byte()? else {
+        return Ok(Key::Escape);
+    };
+
+    // CSI (`ESC [`) and SS3 (`ESC O`) both introduce cursor keys; terminals
+    // switch to SS3 in application cursor mode, which tmux and some others
+    // turn on. Handling only CSI would break arrows there.
+    if !matches!(second, b'[' | b'O') {
+        return Ok(Key::Other);
+    }
+
+    let Some(third) = source.read_byte()? else {
+        return Ok(Key::Other);
+    };
+
+    match third {
+        b'A' => Ok(Key::Up),
+        b'B' => Ok(Key::Down),
+        b'C' => Ok(Key::Right),
+        b'D' => Ok(Key::Left),
+        // Shift-Tab. It is the one CSI sequence here with no parameters,
+        // so it is recognised beside the cursor keys rather than skipped.
+        b'Z' => Ok(Key::BackTab),
+        // A parameterised sequence such as `ESC [ 1 ; 2 A` or `ESC [ 5 ~`.
+        // Consume it so its tail is not mistaken for typed characters.
+        b'0'..=b'9' | b';' => {
+            skip_sequence_tail(source)?;
+            Ok(Key::Other)
+        }
+        _ => Ok(Key::Other),
+    }
+}
+
+/// Consumes the rest of a parameterised escape sequence, so its tail is not
+/// mistaken for typed characters.
+fn skip_sequence_tail(source: &mut impl ByteSource) -> io::Result<()> {
+    // Parameter and intermediate bytes, then one final byte in 0x40..=0x7e.
+    for _ in 0..16 {
+        match source.read_byte()? {
+            Some(0x40..=0x7e) | None => return Ok(()),
+            Some(_) => {}
+        }
+    }
+    Ok(())
+}
+
+/// Completes a UTF-8 character whose first byte is `first`.
+fn read_utf8(first: u8, source: &mut impl ByteSource) -> io::Result<Key> {
+    let width = match first {
+        0x00..=0x7f => 1,
+        0xc0..=0xdf => 2,
+        0xe0..=0xef => 3,
+        0xf0..=0xf7 => 4,
+        // A stray continuation byte: not the start of anything.
+        _ => return Ok(Key::Other),
+    };
+
+    let mut bytes = vec![first];
+    for _ in 1..width {
+        match source.read_byte()? {
+            Some(byte) => bytes.push(byte),
+            None => return Ok(Key::Other),
         }
     }
 
-    /// Decodes what follows `0x1b`.
-    ///
-    /// A bare `Escape` and the start of an arrow key are the same first byte;
-    /// only a bounded read tells them apart.
-    fn read_escape(&self) -> io::Result<Key> {
-        let timed = self.timed_reads()?;
-
-        let Some(second) = timed.read_byte()? else {
-            return Ok(Key::Escape);
-        };
-
-        // CSI (`ESC [`) and SS3 (`ESC O`) both introduce cursor keys; terminals
-        // switch to SS3 in application cursor mode, which tmux and some others
-        // turn on. Handling only CSI would break arrows there.
-        if !matches!(second, b'[' | b'O') {
-            return Ok(Key::Other);
-        }
-
-        let Some(third) = timed.read_byte()? else {
-            return Ok(Key::Other);
-        };
-
-        match third {
-            b'A' => Ok(Key::Up),
-            b'B' => Ok(Key::Down),
-            b'C' => Ok(Key::Right),
-            b'D' => Ok(Key::Left),
-            // Shift-Tab. It is the one CSI sequence here with no parameters,
-            // so it is recognised beside the cursor keys rather than skipped.
-            b'Z' => Ok(Key::BackTab),
-            // A parameterised sequence such as `ESC [ 1 ; 2 A` or `ESC [ 5 ~`.
-            // Consume it so its tail is not mistaken for typed characters.
-            b'0'..=b'9' | b';' => {
-                timed.skip_sequence_tail()?;
-                Ok(Key::Other)
-            }
-            _ => Ok(Key::Other),
-        }
-    }
-
-    /// Completes a UTF-8 character whose first byte is `first`.
-    fn read_utf8(&self, first: u8) -> io::Result<Key> {
-        let width = match first {
-            0x00..=0x7f => 1,
-            0xc0..=0xdf => 2,
-            0xe0..=0xef => 3,
-            0xf0..=0xf7 => 4,
-            // A stray continuation byte: not the start of anything.
-            _ => return Ok(Key::Other),
-        };
-
-        let timed = self.timed_reads()?;
-        let mut bytes = vec![first];
-        for _ in 1..width {
-            match timed.read_byte()? {
-                Some(byte) => bytes.push(byte),
-                None => return Ok(Key::Other),
-            }
-        }
-
-        Ok(std::str::from_utf8(&bytes)
-            .ok()
-            .and_then(|text| text.chars().next())
-            .map_or(Key::Other, Key::Char))
-    }
+    Ok(std::str::from_utf8(&bytes)
+        .ok()
+        .and_then(|text| text.chars().next())
+        .map_or(Key::Other, Key::Char))
 }
 
 impl Drop for RawTerminal {
@@ -276,23 +307,10 @@ struct TimedReads<'a> {
     terminal: &'a RawTerminal,
 }
 
-impl TimedReads<'_> {
+impl ByteSource for TimedReads<'_> {
     /// Reads one byte, or `None` once the kernel's timer expires.
-    fn read_byte(&self) -> io::Result<Option<u8>> {
+    fn read_byte(&mut self) -> io::Result<Option<u8>> {
         self.terminal.read_byte()
-    }
-
-    /// Consumes the rest of a parameterised escape sequence, so its tail is
-    /// not mistaken for typed characters.
-    fn skip_sequence_tail(&self) -> io::Result<()> {
-        // Parameter and intermediate bytes, then one final byte in 0x40..=0x7e.
-        for _ in 0..16 {
-            match self.read_byte()? {
-                Some(0x40..=0x7e) | None => return Ok(()),
-                Some(_) => {}
-            }
-        }
-        Ok(())
     }
 }
 
@@ -305,6 +323,107 @@ impl Drop for TimedReads<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::collections::VecDeque;
+
+    impl ByteSource for &mut VecDeque<u8> {
+        fn read_byte(&mut self) -> io::Result<Option<u8>> {
+            Ok(self.pop_front())
+        }
+    }
+
+    /// The key `bytes` decode to, and the bytes the decoder left unread.
+    fn decode(bytes: &[u8]) -> (Key, Vec<u8>) {
+        let mut rest: VecDeque<u8> = bytes.iter().skip(1).copied().collect();
+        let key = decode_key(bytes.first().copied(), || Ok(&mut rest)).unwrap();
+        (key, rest.into_iter().collect())
+    }
+
+    fn key(bytes: &[u8]) -> Key {
+        decode(bytes).0
+    }
+
+    #[test]
+    fn a_bare_escape_is_escape() {
+        assert_eq!(key(b"\x1b"), Key::Escape);
+    }
+
+    #[test]
+    fn the_arrows_decode_in_both_encodings() {
+        for (tail, expected) in [
+            (b'A', Key::Up),
+            (b'B', Key::Down),
+            (b'C', Key::Right),
+            (b'D', Key::Left),
+        ] {
+            assert_eq!(key(&[0x1b, b'[', tail]), expected, "CSI");
+            assert_eq!(key(&[0x1b, b'O', tail]), expected, "SS3");
+        }
+    }
+
+    #[test]
+    fn shift_tab_is_back_tab() {
+        assert_eq!(key(b"\x1b[Z"), Key::BackTab);
+    }
+
+    #[test]
+    fn a_parameterised_sequence_is_skipped_whole() {
+        // Its tail must not be left behind to be read as typed characters.
+        assert_eq!(decode(b"\x1b[1;2A"), (Key::Other, vec![]));
+        assert_eq!(decode(b"\x1b[5~"), (Key::Other, vec![]));
+        assert_eq!(decode(b"\x1b[5~x"), (Key::Other, vec![b'x']));
+    }
+
+    #[test]
+    fn an_escape_sequence_cut_short_is_skipped() {
+        assert_eq!(key(b"\x1b["), Key::Other);
+        assert_eq!(key(b"\x1b[1;"), Key::Other);
+        assert_eq!(key(b"\x1bx"), Key::Other);
+        assert_eq!(key(b"\x1b[Q"), Key::Other);
+    }
+
+    #[test]
+    fn multi_byte_characters_decode_whole() {
+        assert_eq!(key("ä".as_bytes()), Key::Char('ä'));
+        assert_eq!(key("€".as_bytes()), Key::Char('€'));
+        assert_eq!(key("😀".as_bytes()), Key::Char('😀'));
+        assert_eq!(key(b"a"), Key::Char('a'));
+    }
+
+    #[test]
+    fn a_truncated_or_invalid_character_is_skipped() {
+        assert_eq!(key(&"€".as_bytes()[..2]), Key::Other, "cut short");
+        assert_eq!(key(&[0xc3, 0x28]), Key::Other, "bad continuation byte");
+    }
+
+    #[test]
+    fn a_stray_continuation_byte_is_not_the_start_of_anything() {
+        assert_eq!(decode(&[0x80, b'a']), (Key::Other, vec![b'a']));
+    }
+
+    #[test]
+    fn the_control_keys_decode() {
+        assert_eq!(key(&[0x03]), Key::Interrupt);
+        assert_eq!(key(b"\r"), Key::Enter);
+        assert_eq!(key(b"\n"), Key::Enter);
+        assert_eq!(key(b"\t"), Key::Tab);
+        assert_eq!(key(&[0x7f]), Key::Backspace);
+        assert_eq!(key(&[0x08]), Key::Backspace);
+        assert_eq!(key(&[0x01]), Key::Other, "other controls mean nothing");
+    }
+
+    #[test]
+    fn a_closed_terminal_reads_as_a_cancel() {
+        // A zero-length blocking read means the terminal went away.
+        assert_eq!(key(b""), Key::Interrupt);
+    }
+
+    #[test]
+    fn a_key_with_no_follow_up_bytes_never_asks_for_them() {
+        // Asking switches the terminal's read timing, which is not free.
+        let never = || -> io::Result<&mut VecDeque<u8>> { panic!("asked for follow-up bytes") };
+        assert_eq!(decode_key(Some(b'\r'), never).unwrap(), Key::Enter);
+    }
 
     #[test]
     fn a_missing_controlling_terminal_is_not_an_error() {

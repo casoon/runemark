@@ -517,7 +517,7 @@ impl Viewport {
     }
 
     /// Whether `row` lands inside what this viewport draws of `rows` rows.
-    #[cfg(any(all(feature = "select", unix), test))]
+    #[cfg(all(feature = "select", unix))]
     pub(crate) fn shows(self, rows: usize, row: usize) -> bool {
         self.window(rows).contains(&row)
     }
@@ -689,7 +689,7 @@ impl Menu {
     }
 
     /// How many tabs there are, for the interactive path's arithmetic.
-    #[cfg(all(feature = "select", any(unix, test)))]
+    #[cfg(all(feature = "select", unix))]
     fn tab_count(&self) -> usize {
         self.tabs().len()
     }
@@ -1515,32 +1515,6 @@ mod tests {
     }
 
     #[test]
-    fn scrolling_keeps_every_cursor_position_in_view() {
-        // The bug this pins: stepping to the last entry left the cursor one
-        // row below the window, because the scroll maths and the window maths
-        // disagreed about how many lines the indicators cost.
-        let menu = long_menu(40);
-        let rows = menu.body_height(flat());
-
-        for height in [4, 6, 11, 21, 30] {
-            let mut start = 0usize;
-            for index in 0..menu.len() {
-                let cursor = menu.row_of_item(index, flat());
-                if cursor < start {
-                    start = cursor;
-                }
-                while start < rows - 1 && !Viewport::new(start, height).shows(rows, cursor) {
-                    start += 1;
-                }
-                assert!(
-                    Viewport::new(start, height).shows(rows, cursor),
-                    "height {height}, item {index} (row {cursor}) not visible from {start}"
-                );
-            }
-        }
-    }
-
-    #[test]
     fn nothing_exceeds_the_given_width() {
         // The defect this pins: without a width, a long description wrapped to
         // column zero and destroyed the two-column layout.
@@ -2229,21 +2203,6 @@ mod tests {
                     chrome + height,
                     "height {height}, start {start}:\n{shown}"
                 );
-            }
-        }
-    }
-
-    #[test]
-    fn a_short_window_still_scrolls_to_the_cursor() {
-        let menu = long_menu(40);
-        let rows = menu.body_height(flat());
-        for height in [1, 2] {
-            for cursor in 0..rows {
-                let mut start = 0;
-                while start < rows - 1 && !Viewport::new(start, height).shows(rows, cursor) {
-                    start += 1;
-                }
-                assert!(Viewport::new(start, height).shows(rows, cursor));
             }
         }
     }
