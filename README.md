@@ -219,10 +219,12 @@ cargo run --example progress_demo --features progress
 cargo run --example select_demo --features select
 ```
 
-Node.js examples are in [examples/node](examples/node). Build the local native
-package once, then run an example:
+Node.js examples are in [examples/node](examples/node). Install the build
+tooling and build the local native package once (needs Rust 1.88 or newer; the
+build generates the gitignored `native.cjs` loader), then run an example:
 
 ```bash
+npm --prefix packages/runemark ci
 npm --prefix packages/runemark run build
 node examples/node/report.cjs
 ```
