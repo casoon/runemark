@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import {
   RunemarkConsole,
   RunemarkProgress,
   RunemarkReport,
   Verdict,
+  createProgress,
   renderDiff,
   renderError,
+  renderReport,
 } from '../index.cjs'
 
 const plain = { color: 'never', symbols: 'ascii', isTerminal: false }
@@ -189,4 +193,331 @@ test('report rendering has exact byte-for-byte parity with Rust core', () => {
     '    $ cargo audit fix\n'
 
   assert.equal(rendered, expected)
+})
+
+test('metric trend is validated with and without a delta', () => {
+  const render = (metric) =>
+    renderReport({ schemaVersion: 1, title: 'T', verdict: Verdict.Passed, metrics: [metric] }, plain)
+
+  assert.throws(() => render({ key: 'k', value: 'v', trend: 'bogus' }), /invalid metric trend: bogus/)
+  assert.throws(
+    () => render({ key: 'k', value: 'v', trend: 'bogus', delta: '+1' }),
+    /invalid metric trend: bogus/,
+  )
+  // A valid trend without a delta renders no delta text.
+  assert.match(render({ key: 'k', value: 'v', trend: 'positive' }), /^ {2}k: v$/m)
+  assert.match(render({ key: 'k', value: 'v', trend: 'positive', delta: '+1' }), /k: v \(\+1\)/)
+})
+
+test('stream selects what auto checks, and an explicit isTerminal wins', () => {
+  const noColor = process.env.NO_COLOR
+  delete process.env.NO_COLOR
+  try {
+    for (const stream of [undefined, 'stdout', 'stderr']) {
+      const options = { color: 'auto', stream, isTerminal: true }
+      assert.match(new RunemarkConsole(options).error('x'), /\x1b\[/)
+      assert.match(renderError({ heading: 'x' }, options), /\x1b\[/)
+      assert.match(renderDiff({ changes: [{ action: 'added', path: 'a' }] }, options), /\x1b\[/)
+      assert.match(renderReport({ title: 'T', verdict: Verdict.Failed }, options), /\x1b\[/)
+
+      const off = { color: 'auto', stream, isTerminal: false }
+      assert.equal(new RunemarkConsole(off).error('x'), 'x')
+    }
+  } finally {
+    if (noColor !== undefined) process.env.NO_COLOR = noColor
+  }
+})
+
+test('stream rejects a value that is not stdout or stderr', () => {
+  assert.throws(() => new RunemarkConsole({ stream: 'stdin' }), /invalid stream: stdin/)
+  assert.throws(() => renderError({ heading: 'x' }, { stream: 'file' }), /invalid stream: file/)
+  assert.throws(() => renderDiff({ changes: [] }, { stream: 'file' }), /invalid stream: file/)
+  assert.throws(
+    () => renderReport({ title: 'T', verdict: Verdict.Passed }, { stream: 'file' }),
+    /invalid stream: file/,
+  )
+})
+
+const sampleFindings = (count) =>
+  Array.from({ length: count }, (_, index) => ({
+    message: `Finding ${index + 1}`,
+    ruleId: `rule/${index + 1}`,
+    remedy: `Fix ${index + 1}`,
+    location: { kind: 'file', value: 'a.rs', line: index + 1 },
+  }))
+
+const reportWith = (group, extra = {}) => ({
+  schemaVersion: 1,
+  title: 'T',
+  verdict: Verdict.Warning,
+  groups: [{ title: 'G', ...group }],
+  ...extra,
+})
+
+test('compact level samples findings, detailed level shows every remedy', () => {
+  const input = reportWith({ findings: sampleFindings(5) })
+  const compact = renderReport(input, plain)
+  assert.match(compact, /Finding 3/)
+  assert.doesNotMatch(compact, /Finding 4/)
+  assert.doesNotMatch(compact, /Remedy:/)
+  assert.match(compact, /\.\.\. 2 more finding\(s\)/)
+
+  const detailed = renderReport({ ...input, detailLevel: 'detailed' }, plain)
+  assert.match(detailed, /Finding 5/)
+  assert.match(detailed, /Remedy: Fix 5/)
+  assert.doesNotMatch(detailed, /more finding\(s\)/)
+})
+
+test('maxCompactSamples bounds the compact sample', () => {
+  const output = renderReport(reportWith({ findings: sampleFindings(5) }, { maxCompactSamples: 1 }), plain)
+  assert.match(output, /Finding 1/)
+  assert.doesNotMatch(output, /Finding 2/)
+  assert.match(output, /\.\.\. 4 more finding\(s\)/)
+})
+
+test('totalCount and advisory shape the group heading', () => {
+  const counted = renderReport(reportWith({ findings: sampleFindings(2), totalCount: 10 }), plain)
+  assert.match(counted, /^\* G \(10\)$/m)
+  assert.match(counted, /\.\.\. 8 more finding\(s\)/)
+
+  const advisory = renderReport(reportWith({ findings: sampleFindings(1), advisory: true }), plain)
+  assert.match(advisory, /^\* G \(1\) \[advisory\]$/m)
+})
+
+test('symbols selects the unicode or ascii theme', () => {
+  const input = reportWith({ findings: sampleFindings(1) })
+  assert.match(renderReport(input, { ...plain, symbols: 'ascii' }), /^\[WARN\] T/)
+  assert.match(renderReport(input, { ...plain, symbols: 'unicode' }), /^⚠ T/)
+})
+
+test('width stacks metrics and wraps long messages', () => {
+  const input = {
+    schemaVersion: 1,
+    title: 'T',
+    verdict: Verdict.Passed,
+    metrics: [
+      { key: 'Alpha', value: '1' },
+      { key: 'Beta', value: '2' },
+      { key: 'Gamma', value: '3' },
+    ],
+    groups: [{ title: 'G', findings: [{ message: 'word '.repeat(20).trim(), tone: 'info' }] }],
+  }
+
+  const wide = renderReport(input, plain)
+  assert.match(wide, /^ {2}Alpha: 1 {3}Beta: 2 {3}Gamma: 3$/m)
+
+  const narrow = renderReport(input, { ...plain, width: 30 })
+  assert.match(narrow, /^ {2}Beta: 2$/m)
+  for (const line of narrow.split('\n')) {
+    assert.ok(line.length <= 30, `line exceeds width: ${line}`)
+  }
+})
+
+test('a finding and a badge without a tone use warning and info', () => {
+  const colour = { color: 'always', symbols: 'ascii', isTerminal: true }
+  const render = (finding) => renderReport(reportWith({ findings: [finding] }), colour)
+
+  assert.equal(
+    render({ message: 'm', badge: { label: 'b' } }),
+    render({ message: 'm', tone: 'warning', badge: { label: 'b', tone: 'info' } }),
+  )
+  assert.notEqual(render({ message: 'm' }), render({ message: 'm', tone: 'error' }))
+})
+
+test('renderError renders explanation, remedy and commands', () => {
+  assert.equal(
+    renderError(
+      {
+        heading: 'Browser executable not found',
+        explanation: 'The audit needs a local browser.',
+        remedy: 'Install one:',
+        commands: ['npx playwright install chromium', 'npx playwright --version'],
+      },
+      plain,
+    ),
+    '[FAIL] Browser executable not found\n' +
+      '  The audit needs a local browser.\n\n' +
+      '  Remedy: Install one:\n\n' +
+      '  $ npx playwright install chromium\n' +
+      '  $ npx playwright --version\n',
+  )
+})
+
+test('renderDiff renders every action and a delta', () => {
+  assert.equal(
+    renderDiff(
+      {
+        changes: [
+          { action: 'added', path: 'a.json' },
+          { action: 'modified', path: 'b.ts', delta: '+18 -4' },
+          { action: 'deleted', path: 'c.ts' },
+          { action: 'renamed', path: 'd.ts -> e.ts' },
+        ],
+      },
+      plain,
+    ),
+    '  + CREATE a.json\n' +
+      '  ~ UPDATE b.ts (+18 -4)\n' +
+      '  - DELETE c.ts\n' +
+      '  -> RENAME d.ts -> e.ts\n',
+  )
+})
+
+test('the native boundary rejects invalid enum values at runtime', () => {
+  const report = (extra) => () =>
+    renderReport({ schemaVersion: 1, title: 'T', verdict: Verdict.Passed, ...extra }, plain)
+  const finding = (extra) =>
+    report({ groups: [{ title: 'G', findings: [{ message: 'm', ...extra }] }] })
+  const minimal = { title: 'T', verdict: Verdict.Passed }
+
+  assert.throws(() => renderReport(minimal, { color: 'rainbow' }), /invalid color mode: rainbow/)
+  assert.throws(() => renderReport(minimal, { symbols: 'emoji' }), /invalid symbol theme: emoji/)
+  assert.throws(() => new RunemarkProgress({ mode: 'sometimes' }), /invalid progress mode: sometimes/)
+  assert.throws(report({ detailLevel: 'extreme' }), /invalid detail level: extreme/)
+  assert.throws(finding({ tone: 'critical' }), /invalid tone: critical/)
+  assert.throws(finding({ confidence: 'ultra' }), /invalid confidence: ultra/)
+  assert.throws(finding({ badge: { label: 'b', tone: 'critical' } }), /invalid tone: critical/)
+  assert.throws(
+    finding({ location: { kind: 'database', value: 'users' } }),
+    /invalid location kind: database/,
+  )
+  assert.throws(
+    () => renderDiff({ changes: [{ action: 'copied', path: 'a' }] }, plain),
+    /invalid file action: copied/,
+  )
+  assert.throws(() => new RunemarkConsole(plain).render('critical', 'x'), /invalid tone: critical/)
+})
+
+test('numbers that do not fit a u32 throw and name the field', () => {
+  const location = (extra) =>
+    renderReport(
+      reportWith({ findings: [{ message: 'm', location: { kind: 'file', value: 'a.rs', ...extra } }] }),
+      plain,
+    )
+
+  assert.throws(() => location({ line: -1 }), /invalid location\.line: -1/)
+  assert.throws(() => location({ line: 1.5 }), /invalid location\.line: 1\.5/)
+  assert.throws(() => location({ line: 2 ** 32 }), /invalid location\.line/)
+  assert.throws(() => location({ line: Number.NaN }), /invalid location\.line/)
+  assert.throws(() => location({ line: 1, column: -3 }), /invalid location\.column: -3/)
+  assert.match(location({ line: 4294967295 }), /a\.rs:4294967295/)
+
+  assert.throws(() => renderReport(reportWith({ totalCount: -1 }), plain), /invalid totalCount/)
+  assert.throws(
+    () => renderReport(reportWith({}, { maxCompactSamples: 2 ** 40 }), plain),
+    /invalid maxCompactSamples/,
+  )
+  assert.throws(() => renderReport(reportWith({}), { ...plain, width: -80 }), /invalid width: -80/)
+  assert.throws(
+    () => renderReport({ schemaVersion: 2 ** 32 + 1, title: 'T', verdict: Verdict.Passed }, plain),
+    /unsupported ReportInput schemaVersion/,
+  )
+
+  const progress = new RunemarkProgress({ mode: 'never', ...plain })
+  assert.throws(() => progress.start(2 ** 40, 'x'), /invalid total/)
+  assert.throws(() => progress.advance(-1, 'x'), /invalid position/)
+})
+
+test('location.column without line is rejected instead of dropped', () => {
+  assert.throws(
+    () =>
+      renderReport(
+        reportWith({ findings: [{ message: 'm', location: { kind: 'file', value: 'a.rs', column: 4 } }] }),
+        plain,
+      ),
+    /location\.column requires location\.line/,
+  )
+})
+
+// Progress writes to the process's stderr outside JavaScript, so a child
+// process is the only way to read what it wrote.
+function progressStderr(mode) {
+  const loader = fileURLToPath(new URL('../index.cjs', import.meta.url))
+  const script = `
+    const { createProgress, Verdict } = require(${JSON.stringify(loader)})
+    const progress = createProgress({ mode: ${JSON.stringify(mode)}, color: 'never', symbols: 'ascii', isTerminal: false })
+    progress.start(2, 'Checking pages')
+    progress.notice('warning', 'Slow page')
+    progress.advance(2, 'Checked pages')
+    progress.finish(Verdict.Passed, 'Audit complete')
+  `
+  const child = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8' })
+  assert.equal(child.status, 0, child.stderr)
+  assert.equal(child.stdout, '')
+  return child.stderr
+}
+
+test('progress notice and finish write line-oriented output to stderr', () => {
+  assert.equal(progressStderr('always'), 'Checking pages (0/2)\nSlow page\n[OK] Audit complete\n')
+  assert.equal(progressStderr('never'), '')
+})
+
+test('createProgress returns a progress with the full lifecycle', () => {
+  const progress = createProgress({ mode: 'never', ...plain })
+  assert.ok(progress instanceof RunemarkProgress)
+  progress.start(1, 'Task')
+  progress.notice('info', 'Note')
+  progress.advance(1, 'Task done')
+  progress.finish(Verdict.Passed, 'Done')
+  assert.throws(() => progress.notice('critical', 'x'), /invalid tone: critical/)
+  assert.throws(() => progress.finish('catastrophic', 'x'), /invalid verdict: catastrophic/)
+})
+
+test('scopeNotes and vocabulary render under the verdict line', () => {
+  const output = renderReport(
+    {
+      schemaVersion: 1,
+      title: 'T',
+      verdict: Verdict.Warning,
+      scopeNotes: [{ heading: 'Scope', items: ['src only', 'no history'] }],
+      vocabulary: [
+        { kind: 'dry-run' },
+        { kind: 'baseline', value: 'main' },
+        { kind: 'empty-state', value: 'Nothing new' },
+        { kind: 'truncated', value: 50 },
+      ],
+    },
+    plain,
+  )
+
+  assert.equal(
+    output,
+    '[WARN] T\n' +
+      '  [DRY-RUN] • Baseline: main • Nothing new • Truncated at 50\n' +
+      '  Scope: src only, no history\n\n',
+  )
+})
+
+test('vocabulary rejects an unknown kind and a payload that does not fit it', () => {
+  const render = (entry) => () =>
+    renderReport({ title: 'T', verdict: Verdict.Passed, vocabulary: [entry] }, plain)
+
+  assert.throws(render({ kind: 'unknown' }), /invalid vocabulary kind: unknown/)
+  assert.throws(render({ kind: 'baseline' }), /vocabulary kind baseline needs a string value/)
+  assert.throws(render({ kind: 'empty-state' }), /vocabulary kind empty-state needs a string value/)
+  assert.throws(render({ kind: 'truncated', value: 'x' }), /vocabulary kind truncated needs a number value/)
+  assert.throws(render({ kind: 'truncated', value: -1 }), /invalid vocabulary value: -1/)
+  assert.throws(render({ kind: 'dry-run', value: 'x' }), /vocabulary kind dry-run needs no value/)
+})
+
+test('topIssuesThreshold defaults to 20, accepts a number and false turns it off', () => {
+  const findings = Array.from({ length: 20 }, (_, index) => ({
+    message: `Finding ${index}`,
+    ruleId: `rule/${index % 2}`,
+  }))
+  const render = (extra) =>
+    renderReport(
+      { title: 'T', verdict: Verdict.Warning, groups: [{ title: 'G', findings }], ...extra },
+      plain,
+    )
+
+  assert.match(render({}), /Top issue rules:/)
+  assert.match(render({ topIssuesThreshold: 20 }), /Top issue rules:/)
+  assert.doesNotMatch(render({ topIssuesThreshold: 21 }), /Top issue rules:/)
+  assert.doesNotMatch(render({ topIssuesThreshold: false }), /Top issue rules:/)
+  assert.match(render({ topIssuesThreshold: 1 }), /Top issue rules:/)
+
+  assert.throws(() => render({ topIssuesThreshold: true }), /invalid topIssuesThreshold: true/)
+  assert.throws(() => render({ topIssuesThreshold: -1 }), /invalid topIssuesThreshold: -1/)
+  assert.throws(() => render({ topIssuesThreshold: 'many' }), /topIssuesThreshold/)
 })
