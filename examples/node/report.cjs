@@ -30,6 +30,6 @@ const report = new RunemarkReport({
 })
 
 process.stdout.write(report.render({
-  color: process.stdout.isTTY ? 'always' : 'never',
+  color: 'auto',
   width: process.stdout.columns,
 }))

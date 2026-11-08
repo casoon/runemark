@@ -34,7 +34,8 @@ process.stdout.write(`${text}\n`)
 
 Use `color: 'never'` for snapshots and plain logs. `color: 'auto'` is
 TTY-aware and is the default. It checks stdout; if you write to stderr, pass
-`stream: 'stderr'` (an explicit `isTerminal` wins over both).
+`stream: 'stderr'` (an explicit `isTerminal` wins over both). `color: 'always'`
+forces colour on purpose and overrides `NO_COLOR`.
 
 ## Reports
 
@@ -73,7 +74,7 @@ const report = new RunemarkReport({
 })
 
 process.stdout.write(report.render({
-  color: process.stdout.isTTY ? 'always' : 'never',
+  color: 'auto',
   width: process.stdout.columns,
 }))
 ```
