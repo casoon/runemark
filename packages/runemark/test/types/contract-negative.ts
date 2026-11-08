@@ -14,6 +14,7 @@ import {
   type SymbolTheme,
   type Tone,
   type Verdict,
+  type VocabularyInput,
 } from '../..'
 
 // @ts-expect-error Invalid color mode literal
@@ -93,3 +94,19 @@ new RunemarkProgress({ stream: 'stderr' })
 
 // @ts-expect-error Invalid stream literal
 new RunemarkConsole({ stream: 'stdin' })
+
+// @ts-expect-error Unknown vocabulary kind
+const _invalidVocabularyKind: VocabularyInput = { kind: 'unknown' }
+
+// @ts-expect-error 'baseline' needs a string value
+const _missingVocabularyValue: VocabularyInput = { kind: 'baseline' }
+
+// @ts-expect-error 'truncated' takes a number, not a string
+const _wrongVocabularyValue: VocabularyInput = { kind: 'truncated', value: '50' }
+
+const _invalidThreshold: ReportInput = {
+  title: 'T',
+  verdict: 'passed',
+  // @ts-expect-error `true` is not a threshold; use a number or false
+  topIssuesThreshold: true,
+}

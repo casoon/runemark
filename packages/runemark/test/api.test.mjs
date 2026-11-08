@@ -462,3 +462,62 @@ test('createProgress returns a progress with the full lifecycle', () => {
   assert.throws(() => progress.notice('critical', 'x'), /invalid tone: critical/)
   assert.throws(() => progress.finish('catastrophic', 'x'), /invalid verdict: catastrophic/)
 })
+
+test('scopeNotes and vocabulary render under the verdict line', () => {
+  const output = renderReport(
+    {
+      schemaVersion: 1,
+      title: 'T',
+      verdict: Verdict.Warning,
+      scopeNotes: [{ heading: 'Scope', items: ['src only', 'no history'] }],
+      vocabulary: [
+        { kind: 'dry-run' },
+        { kind: 'baseline', value: 'main' },
+        { kind: 'empty-state', value: 'Nothing new' },
+        { kind: 'truncated', value: 50 },
+      ],
+    },
+    plain,
+  )
+
+  assert.equal(
+    output,
+    '[WARN] T\n' +
+      '  [DRY-RUN] • Baseline: main • Nothing new • Truncated at 50\n' +
+      '  Scope: src only, no history\n\n',
+  )
+})
+
+test('vocabulary rejects an unknown kind and a payload that does not fit it', () => {
+  const render = (entry) => () =>
+    renderReport({ title: 'T', verdict: Verdict.Passed, vocabulary: [entry] }, plain)
+
+  assert.throws(render({ kind: 'unknown' }), /invalid vocabulary kind: unknown/)
+  assert.throws(render({ kind: 'baseline' }), /vocabulary kind baseline needs a string value/)
+  assert.throws(render({ kind: 'empty-state' }), /vocabulary kind empty-state needs a string value/)
+  assert.throws(render({ kind: 'truncated', value: 'x' }), /vocabulary kind truncated needs a number value/)
+  assert.throws(render({ kind: 'truncated', value: -1 }), /invalid vocabulary value: -1/)
+  assert.throws(render({ kind: 'dry-run', value: 'x' }), /vocabulary kind dry-run needs no value/)
+})
+
+test('topIssuesThreshold defaults to 20, accepts a number and false turns it off', () => {
+  const findings = Array.from({ length: 20 }, (_, index) => ({
+    message: `Finding ${index}`,
+    ruleId: `rule/${index % 2}`,
+  }))
+  const render = (extra) =>
+    renderReport(
+      { title: 'T', verdict: Verdict.Warning, groups: [{ title: 'G', findings }], ...extra },
+      plain,
+    )
+
+  assert.match(render({}), /Top issue rules:/)
+  assert.match(render({ topIssuesThreshold: 20 }), /Top issue rules:/)
+  assert.doesNotMatch(render({ topIssuesThreshold: 21 }), /Top issue rules:/)
+  assert.doesNotMatch(render({ topIssuesThreshold: false }), /Top issue rules:/)
+  assert.match(render({ topIssuesThreshold: 1 }), /Top issue rules:/)
+
+  assert.throws(() => render({ topIssuesThreshold: true }), /invalid topIssuesThreshold: true/)
+  assert.throws(() => render({ topIssuesThreshold: -1 }), /invalid topIssuesThreshold: -1/)
+  assert.throws(() => render({ topIssuesThreshold: 'many' }), /topIssuesThreshold/)
+})

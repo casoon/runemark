@@ -17,11 +17,13 @@ import {
   RunemarkConsole,
   RunemarkProgress,
   RunemarkReport,
+  type ScopeNoteInput,
   type SymbolTheme,
   Tone,
   type Tone as ToneType,
   Verdict,
   type Verdict as VerdictType,
+  type VocabularyInput,
   type Writable,
   createProgress,
   renderDiff,
@@ -114,6 +116,15 @@ const nextStep: NextStepInput = {
   command: 'cargo fmt',
 }
 
+const scopeNote: ScopeNoteInput = { heading: 'Scope', items: ['src only'] }
+
+const vocabulary: VocabularyInput[] = [
+  { kind: 'dry-run' },
+  { kind: 'empty-state', value: 'Nothing to report' },
+  { kind: 'baseline', value: 'main' },
+  { kind: 'truncated', value: 50 },
+]
+
 const reportInput: ReportInput = {
   schemaVersion: 1,
   title: 'Audit report',
@@ -121,6 +132,9 @@ const reportInput: ReportInput = {
   metrics: [metric],
   groups: [group],
   nextSteps: [nextStep],
+  scopeNotes: [scopeNote],
+  vocabulary,
+  topIssuesThreshold: 20,
   detailLevel,
   maxCompactSamples: 3,
 }

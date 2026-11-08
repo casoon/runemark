@@ -83,6 +83,23 @@ export interface NextStepInput {
   command?: string
 }
 
+/** A note under the verdict line, rendered as `heading: item, item`. */
+export interface ScopeNoteInput {
+  heading: string
+  items: string[]
+}
+
+/**
+ * A status note under the verdict line. `kind` selects the variant; `value` is
+ * required exactly where shown and rejected on `'dry-run'`.
+ */
+export type VocabularyInput =
+  | { kind: 'dry-run' }
+  | { kind: 'empty-state'; value: string }
+  | { kind: 'baseline'; value: string }
+  /** Integer from 0 to 4294967295. */
+  | { kind: 'truncated'; value: number }
+
 /** Versioned plain-object contract consumed by the native binding. */
 export interface ReportInput {
   schemaVersion?: 1
@@ -91,6 +108,14 @@ export interface ReportInput {
   metrics?: MetricInput[]
   groups?: FindingGroupInput[]
   nextSteps?: NextStepInput[]
+  scopeNotes?: ScopeNoteInput[]
+  vocabulary?: VocabularyInput[]
+  /**
+   * Finding count from which a summary of the most frequent rules is shown.
+   * An integer from 0 to 4294967295; `false` turns the summary off. Defaults
+   * to 20.
+   */
+  topIssuesThreshold?: number | false
   detailLevel?: DetailLevel
   /** Findings shown per group at the compact level. Integer from 0 to 4294967295; defaults to 3. */
   maxCompactSamples?: number

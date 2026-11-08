@@ -5,6 +5,12 @@
   "license": "MIT",
   "main": "index.cjs",
   "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.cjs"
+    }
+  },
   "files": [
     "README.md",
     "index.cjs",

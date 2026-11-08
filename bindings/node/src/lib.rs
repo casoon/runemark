@@ -4,12 +4,12 @@
 //! private. This lets each public DTO evolve additively without exposing Rust
 //! builders, traits, or enum representation details as a JavaScript contract.
 
-use napi::{Error, Result, Status};
+use napi::{Either, Error, Result, Status};
 use napi_derive::napi;
 use runemark::{
     Badge, ColorMode, Confidence, Console, DetailLevel, DiffBlock, ErrorBlock, FileAction,
     FileChange, Finding, FindingGroup, Location, NextStep, ProgressMode, ProgressSink,
-    RenderOptions, Report, SymbolTheme, TerminalProgress, Tone, Verdict,
+    RenderOptions, Report, ScopeNote, SymbolTheme, TerminalProgress, Tone, Verdict, Vocabulary,
 };
 
 #[napi(object)]
@@ -83,6 +83,19 @@ pub struct JsNextStep {
 }
 
 #[napi(object)]
+pub struct JsScopeNote {
+    pub heading: String,
+    pub items: Vec<String>,
+}
+
+/// Tagged union: `kind` selects the variant, `value` is its payload.
+#[napi(object)]
+pub struct JsVocabulary {
+    pub kind: String,
+    pub value: Option<Either<String, f64>>,
+}
+
+#[napi(object)]
 pub struct JsReportInput {
     pub schema_version: Option<f64>,
     pub title: String,
@@ -90,6 +103,10 @@ pub struct JsReportInput {
     pub metrics: Option<Vec<JsMetric>>,
     pub groups: Option<Vec<JsFindingGroup>>,
     pub next_steps: Option<Vec<JsNextStep>>,
+    pub scope_notes: Option<Vec<JsScopeNote>>,
+    pub vocabulary: Option<Vec<JsVocabulary>>,
+    /// A number sets the threshold, `false` disables the summary.
+    pub top_issues_threshold: Option<Either<f64, bool>>,
     pub detail_level: Option<String>,
     pub max_compact_samples: Option<f64>,
 }
@@ -376,7 +393,49 @@ fn report_from_input(input: JsReportInput) -> Result<Report> {
         }
         report = report.add_next_step(output);
     }
+    for note in input.scope_notes.unwrap_or_default() {
+        report = report.add_scope_note(ScopeNote::new(note.heading, note.items));
+    }
+    for vocabulary in input.vocabulary.unwrap_or_default() {
+        report = report.add_vocabulary(vocabulary_from_input(vocabulary)?);
+    }
+    match input.top_issues_threshold {
+        None => {}
+        Some(Either::A(threshold)) => {
+            report.top_issues_threshold = Some(to_u32("topIssuesThreshold", threshold)? as usize);
+        }
+        Some(Either::B(false)) => report.top_issues_threshold = None,
+        Some(Either::B(true)) => {
+            return Err(Error::new(
+                Status::InvalidArg,
+                "invalid topIssuesThreshold: true; expected a number or false",
+            ));
+        }
+    }
     Ok(report)
+}
+
+fn vocabulary_from_input(input: JsVocabulary) -> Result<Vocabulary> {
+    let wrong_value = |expected: &str| {
+        Error::new(
+            Status::InvalidArg,
+            format!("vocabulary kind {} needs {expected}", input.kind),
+        )
+    };
+    match (input.kind.as_str(), input.value.as_ref()) {
+        ("dry-run", None) => Ok(Vocabulary::DryRun),
+        ("dry-run", Some(_)) => Err(wrong_value("no value")),
+        ("empty-state", Some(Either::A(text))) => Ok(Vocabulary::EmptyState(text.clone())),
+        ("empty-state", _) => Err(wrong_value("a string value")),
+        ("baseline", Some(Either::A(text))) => Ok(Vocabulary::Baseline(text.clone())),
+        ("baseline", _) => Err(wrong_value("a string value")),
+        ("truncated", Some(Either::B(count))) => {
+            let count = to_u32("vocabulary value", *count)?;
+            Ok(Vocabulary::Truncated(count as usize))
+        }
+        ("truncated", _) => Err(wrong_value("a number value")),
+        (kind, _) => Err(invalid_value("vocabulary kind", kind)),
+    }
 }
 
 fn group_from_input(input: JsFindingGroup) -> Result<FindingGroup> {
@@ -649,6 +708,9 @@ mod tests {
             metrics: None,
             groups: None,
             next_steps: None,
+            scope_notes: None,
+            vocabulary: None,
+            top_issues_threshold: None,
             detail_level: None,
             max_compact_samples: None,
         })
@@ -689,6 +751,21 @@ mod tests {
                 text: "Ship it".into(),
                 command: Some("deploy".into()),
             }]),
+            scope_notes: Some(vec![JsScopeNote {
+                heading: "Scope".into(),
+                items: vec!["src only".into()],
+            }]),
+            vocabulary: Some(vec![
+                JsVocabulary {
+                    kind: "dry-run".into(),
+                    value: None,
+                },
+                JsVocabulary {
+                    kind: "truncated".into(),
+                    value: Some(Either::B(5.0)),
+                },
+            ]),
+            top_issues_threshold: Some(Either::A(7.0)),
             detail_level: Some("detailed".into()),
             max_compact_samples: Some(5.0),
         })
@@ -696,6 +773,12 @@ mod tests {
         assert_eq!(report.title, "Valid");
         assert_eq!(report.detail_level, DetailLevel::Detailed);
         assert_eq!(report.max_compact_samples, 5);
+        assert_eq!(report.scope_notes.len(), 1);
+        assert_eq!(
+            report.vocabulary_notes,
+            vec![Vocabulary::DryRun, Vocabulary::Truncated(5)]
+        );
+        assert_eq!(report.top_issues_threshold, Some(7));
     }
 
     #[test]
@@ -714,12 +797,44 @@ mod tests {
             }]),
             groups: None,
             next_steps: None,
+            scope_notes: None,
+            vocabulary: None,
+            top_issues_threshold: None,
             detail_level: None,
             max_compact_samples: None,
         };
         assert!(report_from_input(input("positive")).is_ok());
         let err = report_from_input(input("bogus")).unwrap_err();
         assert!(err.to_string().contains("invalid metric trend: bogus"));
+    }
+
+    #[test]
+    fn test_vocabulary_from_input() {
+        let vocabulary = |kind: &str, value: Option<Either<String, f64>>| {
+            vocabulary_from_input(JsVocabulary {
+                kind: kind.into(),
+                value,
+            })
+        };
+        assert_eq!(vocabulary("dry-run", None).unwrap(), Vocabulary::DryRun);
+        assert_eq!(
+            vocabulary("baseline", Some(Either::A("main".into()))).unwrap(),
+            Vocabulary::Baseline("main".into())
+        );
+        assert_eq!(
+            vocabulary("empty-state", Some(Either::A("Nothing found".into()))).unwrap(),
+            Vocabulary::EmptyState("Nothing found".into())
+        );
+        assert_eq!(
+            vocabulary("truncated", Some(Either::B(20.0))).unwrap(),
+            Vocabulary::Truncated(20)
+        );
+        assert!(vocabulary("dry-run", Some(Either::A("x".into()))).is_err());
+        assert!(vocabulary("baseline", None).is_err());
+        assert!(vocabulary("truncated", Some(Either::A("x".into()))).is_err());
+        assert!(vocabulary("truncated", Some(Either::B(-1.0))).is_err());
+        let err = vocabulary("unknown", None).unwrap_err();
+        assert!(err.to_string().contains("invalid vocabulary kind: unknown"));
     }
 
     #[test]
@@ -738,6 +853,9 @@ mod tests {
             }]),
             groups: None,
             next_steps: None,
+            scope_notes: None,
+            vocabulary: None,
+            top_issues_threshold: None,
             detail_level: None,
             max_compact_samples: None,
         })
