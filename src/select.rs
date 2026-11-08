@@ -88,6 +88,7 @@ pub struct Item {
 }
 
 impl Item {
+    /// Creates an entry with an id and a label, without a description.
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             id: id.into(),
@@ -96,6 +97,7 @@ impl Item {
         }
     }
 
+    /// Adds the optional second column shown next to the label.
     pub fn with_description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
@@ -109,7 +111,9 @@ impl Item {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Group {
+    /// The heading shown above the group, and its tab label under [`Layout::Tabs`].
     pub label: String,
+    /// The group's entries, in display order.
     pub items: Vec<Item>,
     /// The tab this group shares with its neighbours, under [`Layout::Tabs`].
     ///
@@ -121,6 +125,7 @@ pub struct Group {
 }
 
 impl Group {
+    /// Creates an empty group with a label.
     pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
@@ -130,6 +135,7 @@ impl Group {
         }
     }
 
+    /// Appends an entry to the group.
     pub fn add_item(mut self, item: Item) -> Self {
         self.items.push(item);
         self
@@ -172,11 +178,14 @@ struct Tab<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Hint {
+    /// The key to press; matched case-insensitively and before the built-in keys.
     pub key: char,
+    /// The text shown next to the key in the footer.
     pub label: String,
 }
 
 impl Hint {
+    /// Creates a footer hint for a key.
     pub fn new(key: char, label: impl Into<String>) -> Self {
         Self {
             key,
@@ -605,15 +614,18 @@ pub struct Menu {
 }
 
 impl Menu {
+    /// Creates an empty menu.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Sets the heading line shown above the list.
     pub fn with_heading(mut self, heading: impl Into<String>) -> Self {
         self.heading = Some(heading.into());
         self
     }
 
+    /// Sets a short note shown beside the heading, for example the tool in use.
     pub fn with_note(mut self, note: impl Into<String>) -> Self {
         self.note = Some(note.into());
         self
@@ -634,6 +646,7 @@ impl Menu {
         self
     }
 
+    /// Appends a group of entries.
     pub fn add_group(mut self, group: Group) -> Self {
         self.groups.push(group);
         self
@@ -653,6 +666,7 @@ impl Menu {
         self
     }
 
+    /// Appends a footer key that is reported back when pressed.
     pub fn add_hint(mut self, hint: Hint) -> Self {
         self.hints.push(hint);
         self
@@ -668,6 +682,7 @@ impl Menu {
         self.items().count()
     }
 
+    /// Whether the menu has no selectable entries.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

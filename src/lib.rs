@@ -18,7 +18,6 @@ pub mod location;
 pub mod progress;
 pub mod report;
 // Temporary: the selection API still lacks item docs (#40); remove once documented.
-#[allow(missing_docs)]
 pub mod select;
 pub mod testing;
 pub mod verdict;
