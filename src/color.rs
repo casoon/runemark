@@ -48,11 +48,17 @@ impl ColorMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Tone {
+    /// Headings and report titles.
     Title,
+    /// De-emphasised text such as hints, locations and rule IDs.
     Muted,
+    /// Neutral, informational text.
     Info,
+    /// Something succeeded or was added.
     Success,
+    /// Something needs attention but does not block.
     Warning,
+    /// Something failed or was removed.
     Error,
 }
 

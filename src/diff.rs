@@ -19,6 +19,7 @@ pub enum FileAction {
 }
 
 impl FileAction {
+    /// Returns the marker shown in front of the label: `+`, `~`, `-`, or `→` (`->` in ASCII).
     pub fn symbol(self, theme: SymbolTheme) -> &'static str {
         match (self, theme) {
             (Self::Added, _) => "+",
@@ -29,6 +30,7 @@ impl FileAction {
         }
     }
 
+    /// Returns the semantic tone of this action.
     pub fn tone(self) -> Tone {
         match self {
             Self::Added => Tone::Success,
@@ -38,6 +40,7 @@ impl FileAction {
         }
     }
 
+    /// Returns the upper-case label shown for this action (`CREATE`, `UPDATE`, `DELETE`, `RENAME`).
     pub fn label(self) -> &'static str {
         match self {
             Self::Added => "CREATE",
@@ -52,8 +55,11 @@ impl FileAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct FileChange {
+    /// The affected file. A rename carries this single path; there is no old-to-new pair.
     pub path: PathBuf,
+    /// What happened to the file.
     pub action: FileAction,
+    /// Optional short size or line delta, shown in parentheses.
     pub delta: Option<String>,
 }
 
@@ -78,6 +84,7 @@ impl FileChange {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct DiffBlock {
+    /// The file changes, rendered one per line in insertion order.
     pub changes: Vec<FileChange>,
 }
 
@@ -93,7 +100,7 @@ impl DiffBlock {
         self
     }
 
-    /// Writes the diff block directly to a writer.
+    /// Writes the diff block directly to a writer, one line per change.
     pub fn write_to(
         &self,
         console: Console,
@@ -121,7 +128,7 @@ impl DiffBlock {
         Ok(())
     }
 
-    /// Renders the diff block.
+    /// Renders the diff block as a String.
     pub fn render(&self, console: Console) -> String {
         crate::internal::collect_to_string(|buf| self.write_to(console, buf))
     }

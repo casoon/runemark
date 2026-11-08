@@ -7,6 +7,8 @@
 //! It deliberately does not parse command-line arguments, own application logging,
 //! or define domain-specific report schemas.
 
+#![warn(missing_docs)]
+
 pub mod color;
 pub mod diff;
 pub mod error_block;
@@ -14,6 +16,8 @@ mod internal;
 pub mod location;
 pub mod progress;
 pub mod report;
+// Temporary: the selection API still lacks item docs (#40); remove once documented.
+#[allow(missing_docs)]
 pub mod select;
 pub mod testing;
 pub mod verdict;

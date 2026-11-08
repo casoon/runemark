@@ -51,12 +51,16 @@ impl RenderOptions {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Confidence {
+    /// The check is very likely correct.
     High,
+    /// The check is probably correct.
     Medium,
+    /// The check may be a false positive.
     Low,
 }
 
 impl Confidence {
+    /// Returns the text rendered in parentheses after a finding, such as `high confidence`.
     pub fn label(self) -> &'static str {
         match self {
             Self::High => "high confidence",
@@ -70,8 +74,11 @@ impl Confidence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Trend {
+    /// The delta is an improvement.
     Positive,
+    /// The delta is a regression.
     Negative,
+    /// The delta is neither an improvement nor a regression.
     Neutral,
 }
 
@@ -79,11 +86,14 @@ pub enum Trend {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Badge {
+    /// The text between the brackets, rendered as given (`QUICK WIN` renders `[QUICK WIN]`).
     pub label: String,
+    /// The tone the badge is painted in.
     pub tone: Tone,
 }
 
 impl Badge {
+    /// Creates a badge with a custom label and tone.
     pub fn new(label: impl Into<String>, tone: Tone) -> Self {
         Self {
             label: label.into(),
@@ -91,14 +101,17 @@ impl Badge {
         }
     }
 
+    /// A `QUICK WIN` badge in the success tone.
     pub fn quick_win() -> Self {
         Self::new("QUICK WIN", Tone::Success)
     }
 
+    /// A `GAINED` badge in the success tone.
     pub fn gained() -> Self {
         Self::new("GAINED", Tone::Success)
     }
 
+    /// A `LOST` badge in the error tone.
     pub fn lost() -> Self {
         Self::new("LOST", Tone::Error)
     }
@@ -112,6 +125,7 @@ impl Badge {
         console.write_paint(self.tone, format!("[{}]", self.label), writer)
     }
 
+    /// Renders the badge as a String.
     pub fn render(&self, console: crate::color::Console) -> String {
         crate::internal::collect_to_string(|buf| self.write_to(console, buf))
     }
@@ -121,11 +135,17 @@ impl Badge {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Metric {
+    /// The metric's name.
     pub key: String,
+    /// The metric's value, rendered as given.
     pub value: String,
+    /// Explicit tone; when unset, the verdict's tone applies if there is one.
     pub tone: Option<Tone>,
+    /// Trend direction; colours the delta and renders nothing without one.
     pub trend: Option<Trend>,
+    /// Change since the last run, such as `+14.2%`.
     pub delta: Option<String>,
+    /// Outcome marker: renders the verdict's symbol in front of the metric.
     pub verdict: Option<crate::Verdict>,
 }
 
@@ -175,12 +195,19 @@ impl Metric {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Finding {
+    /// The finding text.
     pub message: String,
+    /// The tone the message is painted in.
     pub tone: Tone,
+    /// Where the finding was observed.
     pub location: Option<crate::location::Location>,
+    /// Identifier of the rule that produced the finding, rendered as `[rule-id]`.
     pub rule_id: Option<String>,
+    /// How to fix the finding; only rendered in [`DetailLevel::Detailed`].
     pub remedy: Option<String>,
+    /// How sure the check is, rendered in parentheses.
     pub confidence: Option<Confidence>,
+    /// A badge rendered in front of the message.
     pub badge: Option<Badge>,
 }
 
@@ -233,9 +260,13 @@ impl Finding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct FindingGroup {
+    /// The group heading.
     pub title: String,
+    /// The findings carried by the report; possibly a bounded sample of `total_count`.
     pub findings: Vec<Finding>,
+    /// The number of findings the group stands for; raised to `findings.len()` when lower.
     pub total_count: usize,
+    /// Marks the group as advisory; the heading gets an `[advisory]` suffix.
     pub advisory: bool,
 }
 
@@ -278,11 +309,14 @@ impl FindingGroup {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ScopeNote {
+    /// The label before the colon.
     pub heading: String,
+    /// The items, rendered comma-separated after the heading.
     pub items: Vec<String>,
 }
 
 impl ScopeNote {
+    /// Creates a scope note from a heading and its items.
     pub fn new(heading: impl Into<String>, items: Vec<String>) -> Self {
         Self {
             heading: heading.into(),
@@ -295,7 +329,9 @@ impl ScopeNote {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct NextStep {
+    /// What to do next.
     pub text: String,
+    /// A copyable command, rendered as `$ command`.
     pub command: Option<String>,
 }
 
@@ -333,15 +369,27 @@ pub enum Vocabulary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Report {
+    /// The headline shown next to the verdict symbol.
     pub title: String,
+    /// The overall outcome.
     pub verdict: Verdict,
+    /// Summary metrics, rendered in one row (stacked when a narrow width requires it).
     pub metrics: Vec<Metric>,
+    /// Finding groups, in order. Empty groups are not rendered.
     pub groups: Vec<FindingGroup>,
+    /// Scope or completeness notes shown under the verdict line.
     pub scope_notes: Vec<ScopeNote>,
+    /// Recommended actions shown at the end.
     pub next_steps: Vec<NextStep>,
+    /// Dry-run, empty-state, baseline and truncation notes shown under the verdict line.
     pub vocabulary_notes: Vec<Vocabulary>,
+    /// Compact or detailed rendering.
     pub detail_level: DetailLevel,
+    /// How many findings per group the compact form shows (default 3). There is
+    /// no builder; assign the field.
     pub max_compact_samples: usize,
+    /// Finding count from which a "Top issue rules" summary is shown (default
+    /// `Some(20)`); `None` turns it off. There is no builder; assign the field.
     pub top_issues_threshold: Option<usize>,
     /// Text in parentheses after a compact-mode overflow message; `None` omits it.
     pub details_hint: Option<String>,
@@ -349,6 +397,9 @@ pub struct Report {
 
 impl Report {
     /// Creates a new report with a title and verdict.
+    ///
+    /// Compact reports show three sample findings per group, a "Top issue rules"
+    /// summary from 20 findings upwards, and the default details hint.
     pub fn new(title: impl Into<String>, verdict: Verdict) -> Self {
         Self {
             title: title.into(),

@@ -12,8 +12,11 @@ pub enum Location {
     /// Local file path with optional line and column numbers.
     #[non_exhaustive]
     File {
+        /// The file path, absolute or relative to the working directory.
         path: PathBuf,
+        /// Line number, if known.
         line: Option<usize>,
+        /// Column number; only rendered together with a line.
         column: Option<usize>,
     },
     /// Remote or web URL.
