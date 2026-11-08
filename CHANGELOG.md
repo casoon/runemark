@@ -60,8 +60,7 @@ existing behaviour, and such entries are marked `Breaking`.
 - **Select:** the filter matches non-ASCII input case-insensitively and ranks by characters
   instead of bytes.
 - **Select:** narrow and short terminals redraw cleanly. The active tab, heading note and footer
-  labels are shortened, and a terminal shorter than the menu chrome still gets one row. A resize
-  is picked up on the next keypress, which the guide now says.
+  labels are shortened, and a terminal shorter than the menu chrome still gets one row.
 - **Node:** `metric.trend` is validated even without a `delta`, and numbers that do not fit a
   `u32` or a `location.column` without `line` throw instead of wrapping or being dropped.
 - **npm:** the README and examples use `color: 'auto'`, so `NO_COLOR` is honoured, and the build
