@@ -75,9 +75,9 @@ major package version.
 
 - Node.js 20 or newer, Node-API 8.
 - The native binding builds with Rust 1.88; the `runemark` crate keeps Rust 1.85 as its minimum.
-- The package bundles one native binary per target listed in
-  `packages/runemark/scripts/release-binaries.mjs`; the loader picks the one for the current
-  platform. That script is the list, not this page.
+- The package bundles one native binary per target listed in `napi.targets` in
+  `packages/runemark/package.json`; the loader picks the one for the current platform. That
+  field is the list, not this page.
 - The native loader is private: import only `@casoon/runemark`. The `exports` map exposes
   nothing else, and the package works through `require` and through ESM named imports.
 - Output matches the Rust crate for the same input and options.
