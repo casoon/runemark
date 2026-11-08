@@ -1,0 +1,40 @@
+{
+  "function": "renderReport",
+  "input": {
+    "schemaVersion": 1,
+    "title": "T",
+    "verdict": "warning",
+    "scopeNotes": [
+      {
+        "heading": "Scope",
+        "items": [
+          "src only",
+          "no history"
+        ]
+      }
+    ],
+    "vocabulary": [
+      {
+        "kind": "dry-run"
+      },
+      {
+        "kind": "baseline",
+        "value": "main"
+      },
+      {
+        "kind": "empty-state",
+        "value": "Nothing new"
+      },
+      {
+        "kind": "truncated",
+        "value": 50
+      }
+    ]
+  },
+  "options": {
+    "color": "never",
+    "symbols": "ascii",
+    "isTerminal": false
+  },
+  "expected": "[WARN] T\n  [DRY-RUN] • Baseline: main • Nothing new • Truncated at 50\n  Scope: src only, no history\n\n"
+}

@@ -1,0 +1,45 @@
+{
+  "function": "renderReport",
+  "input": {
+    "schemaVersion": 1,
+    "title": "T",
+    "verdict": "passed",
+    "metrics": [
+      {
+        "key": "Alpha",
+        "value": "1"
+      },
+      {
+        "key": "Beta",
+        "value": "2"
+      },
+      {
+        "key": "Gamma",
+        "value": "3"
+      }
+    ],
+    "groups": [
+      {
+        "title": "G",
+        "findings": [
+          {
+            "message": "word word word word word word word word word word word word word word word word word word word word",
+            "tone": "info",
+            "ruleId": "style/long",
+            "badge": {
+              "label": "note",
+              "tone": "info"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "options": {
+    "color": "never",
+    "symbols": "ascii",
+    "isTerminal": false,
+    "width": 30
+  },
+  "expected": "[OK] T\n\n  Alpha: 1\n  Beta: 2\n  Gamma: 3\n\n* G (1)\n  - [note] word word word word\n    word word word word word\n    word word word word word\n    word word word word word\n    word [style/long]\n\n"
+}

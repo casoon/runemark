@@ -39,6 +39,10 @@ It runs, in this order and stopping at the first failure:
   `npm ci`, `npm test`, `npm run test:types`, `npm run test:contract` and
   `npm run pack:check`
 
+The Node tests compare against output the Rust core rendered into
+`tests/fixtures/node-parity`. After an intended rendering change, review and
+rewrite those fixtures with `RUNEMARK_BLESS=1 cargo test --test node_parity_fixtures`.
+
 CI additionally runs the tests on macOS and Windows and the Node package on
 Node 20 and 22; those are not covered locally.
 

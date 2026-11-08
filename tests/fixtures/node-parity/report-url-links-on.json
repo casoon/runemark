@@ -1,0 +1,30 @@
+{
+  "function": "renderReport",
+  "input": {
+    "schemaVersion": 1,
+    "title": "Links",
+    "verdict": "passed",
+    "groups": [
+      {
+        "title": "Pages",
+        "findings": [
+          {
+            "message": "Slow page",
+            "tone": "warning",
+            "location": {
+              "kind": "url",
+              "value": "https://example.com/a?x=1&y=2"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "options": {
+    "color": "never",
+    "symbols": "ascii",
+    "isTerminal": false,
+    "hyperlinks": true
+  },
+  "expected": "[OK] Links\n\n* Pages (1)\n  - Slow page at \u001b]8;;https://example.com/a?x=1&y=2\u001b\\https://example.com/a?x=1&y=2\u001b]8;;\u001b\\\n\n"
+}

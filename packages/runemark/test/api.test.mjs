@@ -180,53 +180,6 @@ test('an explicit tone still wins over the verdict it was given', () => {
   assert.match(report.render({ ...plain, width: 80 }), /\[FAIL\] Errors: 3/)
 })
 
-test('report rendering has exact byte-for-byte parity with Rust core', () => {
-  const report = new RunemarkReport({
-    schemaVersion: 1,
-    title: 'Security & Quality Audit',
-    verdict: Verdict.Warning,
-    metrics: [
-      { key: 'Issues', value: '2', tone: 'warning' },
-      { key: 'Coverage', value: '88%', tone: 'success', trend: 'positive', delta: '+3%' },
-    ],
-    groups: [{
-      title: 'Vulnerabilities',
-      findings: [
-        {
-          message: 'SQL injection vulnerability',
-          tone: 'error',
-          ruleId: 'security/sql-injection',
-          location: { kind: 'file', value: 'src/db.rs', line: 42 },
-          confidence: 'high',
-          badge: { label: 'critical', tone: 'error' },
-        },
-        {
-          message: 'Hardcoded secret',
-          tone: 'warning',
-          ruleId: 'security/secret-leak',
-          location: { kind: 'file', value: 'src/auth.rs', line: 10, column: 5 },
-        },
-      ],
-    }],
-    nextSteps: [
-      { text: 'Fix critical vulnerabilities', command: 'cargo audit fix' },
-    ],
-  })
-
-  const rendered = report.render(plain)
-  const expected =
-    '[WARN] Security & Quality Audit\n\n' +
-    '  Issues: 2   Coverage: 88% (+3%)\n\n' +
-    '* Vulnerabilities (2)\n' +
-    '  - [critical] SQL injection vulnerability [security/sql-injection] (high confidence) at src/db.rs:42\n' +
-    '  - Hardcoded secret [security/secret-leak] at src/auth.rs:10:5\n\n' +
-    'Next steps:\n' +
-    '  - Fix critical vulnerabilities\n' +
-    '    $ cargo audit fix\n'
-
-  assert.equal(rendered, expected)
-})
-
 test('metric trend is validated with and without a delta', () => {
   const render = (metric) =>
     renderReport({ schemaVersion: 1, title: 'T', verdict: Verdict.Passed, metrics: [metric] }, plain)

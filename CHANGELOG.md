@@ -47,6 +47,8 @@ existing behaviour, and such entries are marked `Breaking`.
   build provenance attestations, and the publish job pins npm 11.
 - **Docs:** the README and the guide samples are compiled as doctests, and the crate warns about
   undocumented public items.
+- **Contributors:** the Node tests compare against output rendered by the Rust core (fixtures under
+  `tests/fixtures/node-parity`), so the byte-for-byte parity claim is tested.
 
 ### Fixed
 

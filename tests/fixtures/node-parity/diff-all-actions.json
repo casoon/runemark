@@ -1,0 +1,30 @@
+{
+  "function": "renderDiff",
+  "input": {
+    "changes": [
+      {
+        "action": "added",
+        "path": "a.json"
+      },
+      {
+        "action": "modified",
+        "path": "b.ts",
+        "delta": "+18 -4"
+      },
+      {
+        "action": "deleted",
+        "path": "c.ts"
+      },
+      {
+        "action": "renamed",
+        "path": "d.ts -> e.ts"
+      }
+    ]
+  },
+  "options": {
+    "color": "never",
+    "symbols": "ascii",
+    "isTerminal": false
+  },
+  "expected": "  + CREATE a.json\n  ~ UPDATE b.ts (+18 -4)\n  - DELETE c.ts\n  -> RENAME d.ts -> e.ts\n"
+}

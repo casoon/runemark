@@ -1,0 +1,18 @@
+{
+  "function": "renderError",
+  "input": {
+    "heading": "Browser executable not found",
+    "explanation": "The audit needs a local browser.",
+    "remedy": "Install one:",
+    "commands": [
+      "npx playwright install chromium",
+      "npx playwright --version"
+    ]
+  },
+  "options": {
+    "color": "never",
+    "symbols": "ascii",
+    "isTerminal": false
+  },
+  "expected": "[FAIL] Browser executable not found\n  The audit needs a local browser.\n\n  Remedy: Install one:\n\n  $ npx playwright install chromium\n  $ npx playwright --version\n"
+}
