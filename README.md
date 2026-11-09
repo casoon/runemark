@@ -26,14 +26,20 @@ steps.
 runemark is the shared presentation layer for those concerns:
 
 - Semantic output: success, warning, error, info, muted text, and headings.
-- Predictable color policy: TTY-aware by default, `NO_COLOR` compliant, with
-  explicit `always` and `never` modes.
+- Predictable color policy: TTY-aware by default, `NO_COLOR` compliant (an
+  empty value counts as unset), no colour for `TERM=dumb`, and explicit `always`
+  and `never` modes.
+- Independent capabilities: colour, the symbol set (Unicode or ASCII) and OSC 8
+  hyperlinks can each be set on their own.
 - Plain, deterministic output when redirected or snapshot-tested.
-- Report models for verdicts, summary metrics, finding groups, and next steps.
+- Report models for verdicts, summary metrics, finding groups, and next steps,
+  with compact output that says how much it left out.
 - Actionable error blocks, file-change previews, and clickable locations for
   compatible terminals.
 - Grouped, keyboard-driven selection with filtering, for tools that need a menu
   rather than a prompt (Unix).
+- Writer-first rendering and test helpers: renderers write to any `Write`, and
+  `strip_ansi` and `assert_plain_snapshot!` make golden tests of CLI output short.
 - Small core dependency footprint; `indicatif` and `libc` are optional, behind
   the `progress` and `select` features.
 
@@ -65,7 +71,25 @@ println!("{}", console.paint(Tone::Muted, "Run with --details for every finding.
 
 `ColorMode::Auto` emits styles only to an interactive terminal and honours the
 [`NO_COLOR`](https://no-color.org/) convention. Use `Always` for a forced
-colorful local experience or `Never` for tests and plain logs.
+colorful local experience or `Never` for tests and plain logs. An empty
+`NO_COLOR` counts as unset, as the convention says, and `TERM=dumb` turns colour
+off.
+
+### Capabilities
+
+Colour, symbols and hyperlinks follow one decision by default: with colour on, a
+console draws Unicode symbols and OSC 8 links; with colour off, ASCII and plain
+text. Each can be overridden on its own:
+
+```rust
+use runemark::{ColorMode, Console, SymbolTheme};
+
+// Colour, but ASCII symbols and no hyperlinks, for a terminal that prints
+// escape sequences it does not understand.
+let console = Console::stdout(ColorMode::Auto)
+    .with_theme(SymbolTheme::Ascii)
+    .with_hyperlinks(false);
+```
 
 ## Reports
 
@@ -82,6 +106,21 @@ let report = Report::new("Site audit", Verdict::Warning).add_group(
 );
 
 print!("{}", report.render(Console::stdout(ColorMode::Auto)));
+```
+
+### Compact and detailed
+
+A compact report shows a bounded sample of each group and says how many findings
+it left out. The pointer to the full list is the host tool's to word, because
+runemark does not know its flags:
+
+```rust
+use runemark::{Report, Verdict};
+
+// The default reads "(use --details to view all)". A tool without that flag
+// replaces it, or drops it with `None`.
+let report = Report::new("Site audit", Verdict::Warning)
+    .with_details_hint(Some("use --all to view every finding".to_string()));
 ```
 
 ### Metrics as outcomes
@@ -175,7 +214,9 @@ fn main() -> std::io::Result<()> {
 ```
 
 `/` filters the menu as you type, ranking names above descriptions and tight
-matches above scattered ones.
+matches above scattered ones. `Home`, `End`, `PgUp` and `PgDn` jump through a
+long list, and the menu redraws when the terminal is resized. Without a
+controlling terminal `run` reports `Outcome::Unavailable` instead of failing.
 
 `Layout::Tabs` puts the groups in a row above the list and shows only the
 active one's entries, for a list that would otherwise be taller than the
@@ -234,14 +275,14 @@ node examples/node/report.cjs
 
 ## Development
 
-Run the complete local validation suite:
+Run the checks CI runs, locally:
 
 ```bash
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
-cargo package --locked
+scripts/verify.sh
 ```
+
+`scripts/verify.sh --rust` skips the Node section. The individual commands are
+in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for API and contribution guidelines.
 See the [Node contract](https://casoon.github.io/runemark/docs/guides/node-contract/)

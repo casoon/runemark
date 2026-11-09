@@ -7,6 +7,12 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+### Changed
+
+- **Docs:** the README and the start page cover independent colour, symbol and hyperlink
+  settings, the configurable details hint, the menu's navigation keys and the test helpers.
+- **Contributors:** the hero recording is rendered with castwright 0.6.0.
+
 ## [0.10.0] - 2026-11-08
 
 ### Breaking
