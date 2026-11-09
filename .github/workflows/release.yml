@@ -107,7 +107,7 @@ jobs:
         run: docker run --rm -v "${{ github.workspace }}:/workspace" -w /workspace/packages/runemark node:20-alpine npm run test:smoke
       - name: Set up QEMU
         if: matrix.target == 'aarch64-unknown-linux-gnu'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
       - name: Runtime smoke test (arm64 glibc 2.31 container via QEMU)
