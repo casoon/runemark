@@ -108,11 +108,15 @@ process.stdout.write(renderReport({
       },
       {
         title: 'Predictable colour policy',
-        body: 'Auto emits styles only to an interactive terminal and honours NO_COLOR; Always and Never are explicit. Redirected output stays plain and deterministic.',
+        body: 'Auto emits styles only to an interactive terminal, honours NO_COLOR and stays plain for TERM=dumb; Always and Never are explicit. Colour, symbols and hyperlinks can each be set on their own. Redirected output stays plain and deterministic.',
       },
       {
         title: 'Reports that fit the terminal',
         body: 'Compact or detailed, with metrics, grouped findings and next steps. Given a width, narrow layouts stack metrics and wrap messages with a hanging indent.',
+      },
+      {
+        title: 'Menus when a prompt is not enough',
+        body: 'An optional grouped menu with filtering, tabs and multi-pick for Unix terminals. It redraws on resize, never blocks without a terminal, and hands you a plain rendering to print instead.',
       },
       {
         title: 'Safe with untrusted text',
@@ -127,7 +131,7 @@ process.stdout.write(renderReport({
     lead="**Reports adapt to the terminal they're given, not to a fixed layout.** Pass a known width and narrow terminals stack summary metrics and wrap finding messages with a hanging indent instead of truncating."
     points={[
       "**Verdict symbols survive NO_COLOR.** A tone disappears without color; the verdict's own symbol does not — a failing metric still reads as failing piped to a file.",
-      '**Compact or detailed, same data.** The host CLI chooses `detailLevel`; runemark never asks for two separate report shapes.',
+      '**Compact or detailed, same data.** The host CLI chooses `detailLevel`; runemark never asks for two separate report shapes. Compact output says how many findings it left out, and your tool words the pointer to the rest.',
       '**Determinism by construction.** Identical input always walks the same path — no timing-dependent output, so fixtures can be committed and diffed.',
     ]}
     links={[
@@ -172,6 +176,14 @@ process.stdout.write(renderReport({
       {
         q: 'What does output look like under NO_COLOR or when piped to a file?',
         a: "Plain and deterministic. Tones disappear, but a verdict's own symbol stays, so a failing metric still reads as failing without color.",
+      },
+      {
+        q: 'How do I test the output of my CLI?',
+        a: 'Render with ColorMode::Never for deterministic text, or strip the escape sequences from a coloured string with strip_ansi. assert_plain_snapshot! compares the plain result against an expected block, and the Node package renders the same bytes.',
+      },
+      {
+        q: 'Can I turn off symbols or hyperlinks without turning off colour?',
+        a: 'Yes. Colour, the symbol set and OSC 8 hyperlinks follow one decision by default and can each be overridden: Console::with_theme chooses Unicode or ASCII symbols, Console::with_hyperlinks switches links.',
       },
       {
         q: 'Does runemark parse my CLI arguments or define my report data?',
