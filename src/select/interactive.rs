@@ -365,8 +365,18 @@ impl Scroll {
 
         if rows <= body {
             self.start = 0;
+            // Wrapping adds lines the row count does not know about, so it is
+            // only on while the wrapped body still fits; otherwise the list
+            // shortens and scrolls exactly as it does without the option.
+            let wrap = menu.wraps_descriptions()
+                && columns
+                    .is_some_and(|columns| rows + menu.wrapped_extra_lines(view, columns) <= body);
             // Still bound the width: a short list can carry long descriptions.
-            return Some(Viewport::new(0, rows.max(1)).with_width(columns));
+            return Some(
+                Viewport::new(0, rows.max(1))
+                    .with_width(columns)
+                    .with_wrap(wrap),
+            );
         }
 
         let cursor = menu.row_of_item(state.index, view);

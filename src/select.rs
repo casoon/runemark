@@ -304,6 +304,48 @@ impl Glyphs {
     }
 }
 
+/// Breaks `text` into lines of at most `max` columns at spaces. A word wider
+/// than a line is cut at the line's edge rather than left to overflow.
+fn wrap_words(text: &str, max: usize) -> Vec<String> {
+    let max = max.max(1);
+    let mut lines: Vec<String> = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        let mut word = word.to_string();
+        while word.width() > max {
+            if !line.is_empty() {
+                lines.push(std::mem::take(&mut line));
+            }
+            let mut head = String::new();
+            let mut used = 0;
+            let mut rest = String::new();
+            for character in word.chars() {
+                let next = character.to_string().width();
+                if rest.is_empty() && used + next <= max {
+                    head.push(character);
+                    used += next;
+                } else {
+                    rest.push(character);
+                }
+            }
+            lines.push(head);
+            word = rest;
+        }
+        if line.is_empty() {
+            line = word;
+        } else if line.width() + 1 + word.width() <= max {
+            line.push(' ');
+            line.push_str(&word);
+        } else {
+            lines.push(std::mem::replace(&mut line, word));
+        }
+    }
+    if !line.is_empty() || lines.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
+
 /// Shortens `text` to `max` columns, marking the cut with `ellipsis`.
 ///
 /// Entries are shortened rather than wrapped. A wrapped line would change the
@@ -531,6 +573,9 @@ struct Viewport {
     /// Columns available. Entries are shortened to fit rather than wrapped:
     /// a wrapped line would change the frame height and break the redraw.
     width: Option<usize>,
+    /// Whether descriptions wrap onto continuation lines. Only set when the
+    /// wrapped body still fits `height`.
+    wrap: bool,
 }
 
 impl Viewport {
@@ -540,7 +585,14 @@ impl Viewport {
             start,
             height,
             width: None,
+            wrap: false,
         }
+    }
+
+    #[cfg(any(all(feature = "select", unix), test))]
+    pub(crate) const fn with_wrap(mut self, wrap: bool) -> Self {
+        self.wrap = wrap;
+        self
     }
 
     #[cfg(any(all(feature = "select", unix), test))]
@@ -611,6 +663,8 @@ pub struct Menu {
     layout: Layout,
     /// Entries [`Menu::run_multi`] starts with ticked.
     ticked: BTreeSet<String>,
+    /// Whether descriptions wrap instead of being shortened, when the menu fits.
+    wrap_descriptions: bool,
 }
 
 impl Menu {
@@ -643,6 +697,18 @@ impl Menu {
     /// How the groups are arranged. See [`Layout`].
     pub fn with_layout(mut self, layout: Layout) -> Self {
         self.layout = layout;
+        self
+    }
+
+    /// Wraps long descriptions onto continuation lines, aligned under the first,
+    /// instead of shortening them.
+    ///
+    /// Only while the whole menu still fits the terminal's height; a taller
+    /// menu scrolls by whole rows and keeps shortening, so the scroll window
+    /// and the redraw never depend on how a description wraps. [`Menu::render`]
+    /// has no width and never wraps.
+    pub fn with_wrapped_descriptions(mut self) -> Self {
+        self.wrap_descriptions = true;
         self
     }
 
@@ -841,6 +907,37 @@ impl Menu {
             .map(|item| item.label.width() + boxes)
             .max()
             .unwrap_or(0)
+    }
+
+    /// Columns a description may use beside its label, or `None` when it is
+    /// dropped for lack of room.
+    fn description_room(&self, view: View<'_>, columns: usize) -> Option<usize> {
+        let width = self
+            .label_width(view)
+            .min(columns.saturating_sub(MARKER_WIDTH));
+        let room = columns.saturating_sub(MARKER_WIDTH + width + GAP_WIDTH);
+        (room >= MIN_DESCRIPTION).then_some(room)
+    }
+
+    #[cfg(any(all(feature = "select", unix), test))]
+    fn wraps_descriptions(&self) -> bool {
+        self.wrap_descriptions
+    }
+
+    /// Lines wrapping would add to the body at `columns`.
+    #[cfg(any(all(feature = "select", unix), test))]
+    fn wrapped_extra_lines(&self, view: View<'_>, columns: usize) -> usize {
+        let Some(room) = self.description_room(view, columns) else {
+            return 0;
+        };
+        let rows = self.body_rows(view);
+        rows.iter()
+            .filter_map(|row| match row {
+                Row::Item(item, _) => item.description.as_deref(),
+                Row::Group(_) => None,
+            })
+            .map(|description| wrap_words(description, room).len().saturating_sub(1))
+            .sum()
     }
 
     /// Renders the menu as plain text, with no cursor and no terminal control.
@@ -1046,11 +1143,23 @@ impl Menu {
                         });
                         if room >= MIN_DESCRIPTION {
                             write!(writer, "{:padding$}  ", "")?;
-                            console.write_paint(
-                                Tone::Muted,
-                                shorten(description, room, ellipsis),
-                                writer,
-                            )?;
+                            if viewport.is_some_and(|viewport| viewport.wrap) {
+                                let lines = wrap_words(description, room);
+                                let indent = MARKER_WIDTH + width + GAP_WIDTH;
+                                for (at, line) in lines.iter().enumerate() {
+                                    if at > 0 {
+                                        writeln!(writer)?;
+                                        write!(writer, "{:indent$}", "")?;
+                                    }
+                                    console.write_paint(Tone::Muted, line, writer)?;
+                                }
+                            } else {
+                                console.write_paint(
+                                    Tone::Muted,
+                                    shorten(description, room, ellipsis),
+                                    writer,
+                                )?;
+                            }
                         }
                     }
                 }
@@ -1554,6 +1663,88 @@ mod tests {
             Menu::new().chrome_height(searching(""), None),
             2,
             "the query line needs room even without hints"
+        );
+    }
+
+    fn wrapping_menu() -> Menu {
+        Menu::new()
+            .with_wrapped_descriptions()
+            .add_group(
+                Group::new("Level").add_item(Item::new("a", "balanced").with_description(
+                    "creating notes and folders runs automatically, moving needs approval",
+                )),
+            )
+    }
+
+    fn wrapped_at(menu: &Menu, columns: usize, wrap: bool) -> String {
+        crate::internal::collect_to_string(|buf| {
+            menu.write_frame(
+                buf,
+                plain(),
+                Some(0),
+                Some(
+                    Viewport::new(0, 999)
+                        .with_width(Some(columns))
+                        .with_wrap(wrap),
+                ),
+                flat(),
+            )
+        })
+    }
+
+    #[test]
+    fn wrap_words_breaks_at_spaces_and_cuts_overlong_words() {
+        assert_eq!(wrap_words("aa bb cc", 5), ["aa bb", "cc"]);
+        assert_eq!(wrap_words("abcdefgh", 3), ["abc", "def", "gh"]);
+        assert_eq!(wrap_words("", 5), [""]);
+    }
+
+    #[test]
+    fn wrapped_descriptions_continue_under_the_first_line() {
+        let menu = wrapping_menu();
+        let shown = wrapped_at(&menu, 40, true);
+        assert!(shown.lines().all(|line| line.width() <= 40), "{shown}");
+        let lines: Vec<&str> = shown.lines().filter(|l| !l.is_empty()).collect();
+        assert!(lines.len() > 2, "{shown}");
+        // Label column: marker 2 + "balanced" 8 + gap 2.
+        // Group heading, then the item line; the rest are continuations.
+        for continuation in &lines[2..] {
+            assert!(continuation.starts_with(&" ".repeat(12)), "{shown}");
+        }
+        assert!(!shown.contains('…'), "{shown}");
+    }
+
+    #[test]
+    fn descriptions_are_shortened_unless_wrapping_is_on() {
+        let menu = wrapping_menu();
+        let shown = wrapped_at(&menu, 40, false);
+        assert!(shown.contains('…'), "{shown}");
+        assert_eq!(
+            shown.lines().filter(|l| !l.is_empty()).count(),
+            2,
+            "{shown}"
+        );
+        // Without a viewport width, render never wraps.
+        assert!(!menu.render(plain()).contains('…'));
+        assert_eq!(
+            menu.render(plain())
+                .lines()
+                .filter(|l| !l.is_empty())
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn wrapped_extra_lines_counts_what_wrapping_adds() {
+        let menu = wrapping_menu();
+        let extra = menu.wrapped_extra_lines(flat(), 40);
+        let wrapped = wrapped_at(&menu, 40, true);
+        let plain_frame = wrapped_at(&menu, 40, false);
+        assert_eq!(
+            wrapped.lines().count(),
+            plain_frame.lines().count() + extra,
+            "{wrapped}"
         );
     }
 

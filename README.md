@@ -236,6 +236,10 @@ taller lists scroll, with `↑ N more` / `↓ N more` marking what is out of vie
 and entries are shortened rather than wrapped. `render` does neither, since a
 pipe has no height or width to run out of.
 
+`Menu::with_wrapped_descriptions` wraps long descriptions under the first line
+instead, as long as the whole menu still fits the terminal's height; a taller
+menu keeps shortening and scrolling.
+
 ## Design boundaries
 
 | runemark owns | Applications own |

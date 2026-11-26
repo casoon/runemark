@@ -7,6 +7,13 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+### Added
+
+- **Select:** `Menu::with_wrapped_descriptions` wraps long descriptions onto continuation lines
+  under the first instead of shortening them. It only applies while the whole menu still fits the
+  terminal's height; a taller menu keeps shortening and scrolling as before, and `Menu::render`
+  never wraps.
+
 ### Changed
 
 - **Pages:** the project site uses the current shared theme (0.19.0).
