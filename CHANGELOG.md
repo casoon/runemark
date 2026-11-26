@@ -7,6 +7,8 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-26
+
 ### Added
 
 - **Select:** `Menu::with_wrapped_descriptions` wraps long descriptions under the first line
