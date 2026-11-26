@@ -38,6 +38,10 @@ runemark is the shared presentation layer for those concerns:
   compatible terminals.
 - Grouped, keyboard-driven selection with filtering, for tools that need a menu
   rather than a prompt (Unix).
+- Compact tables, key-value headers and horizontal rules for listings and detail
+  views, aligned by display width.
+- Confirmation prompts (`select` feature): `y/N` or a typed code, which refuse to
+  run without a terminal instead of guessing an answer.
 - Writer-first rendering and test helpers: renderers write to any `Write`, and
   `strip_ansi` and `assert_plain_snapshot!` make golden tests of CLI output short.
 - Small core dependency footprint; `indicatif` and `libc` are optional, behind
@@ -265,6 +269,7 @@ cargo run --example report_demo
 cargo run --example hero_demo --features progress
 cargo run --example progress_demo --features progress
 cargo run --example select_demo --features select
+cargo run --example confirm_demo --features select
 ```
 
 Node.js examples are in [examples/node](examples/node). Install the build

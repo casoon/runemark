@@ -1,7 +1,7 @@
 ---
 title: Selection
-description: A grouped, keyboard-driven menu for tools that need a choice rather than a prompt.
-order: 5
+description: A grouped, keyboard-driven menu for tools that need a choice rather than a prompt, and confirmation prompts for steps that must not happen by accident.
+order: 6
 ---
 
 The optional `select` feature adds a grouped menu. It is the one place where runemark reads
@@ -355,6 +355,52 @@ Like the rest of the crate, the menu follows the console's `SymbolTheme`. With t
 which is what a console with colour off gets — `Menu::render` and the interactive menu draw `>`,
 `^` / `v`, `<>`, `...`, `|` and `-` instead of `›`, `↑` / `↓`, `←→`, `…`, `│` and `─`, so a pipe or
 a log file receives plain ASCII.
+
+## Confirming an action
+
+A menu picks; some steps only need a yes. `Confirm` and `Challenge` (feature `select`) are the
+prompts for an action a CLI must not take by accident: approving a plan, deleting data, sending
+something that cannot be recalled.
+
+```rust
+use runemark::{Answer, Challenge, ColorMode, Confirm, Console, Verdict};
+
+let console = Console::stderr(ColorMode::Auto);
+
+// y/N, with a line above it that says what is at stake.
+let answer = Confirm::new("Apply 12 changes?")
+    .with_header(Verdict::Warning, "Approve plan 3f2a1c")
+    .run(console)?;
+
+// Or: the user has to read a code off the screen and type it.
+let answer = Challenge::new("Type 3f2a1c to delete 12 notes:", "3f2a1c")
+    .with_header(Verdict::Failed, "This cannot be undone")
+    .run(console)?;
+
+match answer {
+    Answer::Confirmed => { /* go ahead */ }
+    Answer::Declined => { /* said no, typed another code, or closed the input */ }
+    Answer::Unavailable => { /* not run: see below */ }
+}
+# Ok::<(), std::io::Error>(())
+```
+
+**It only runs on a terminal.** `run` needs a terminal on standard input, so a script cannot
+approve by piping `yes` into the command, and on standard error, where the prompt is drawn, so
+it can be seen. Otherwise it returns `Answer::Unavailable` without asking and without reading
+anything. Treat that as "not confirmed" and tell the user to run the command in a terminal.
+Unlike a menu there is nothing to fall back to: there is no plain rendering of a question.
+
+- **`Confirm`** accepts `y`, `yes`, `n` and `no` in any case. An empty answer takes the default,
+  no unless `with_default(true)`, and the prompt shows it as a capital: `[y/N]`, `[Y/n]`.
+  Anything else asks again.
+- **`Challenge`** is confirmed only by the exact code, after trimming whitespace. It gets one
+  attempt, and a different code is `Declined`. The prompt text is yours and says what to type;
+  the expected code is not added to it. An empty expected code never matches.
+- **Closing the input** (`Ctrl-D`) is `Declined`, never a default yes.
+- The prompt is drawn on standard error like the menu, so standard output stays free for the
+  command's result. Input is plain line-based standard input: no raw mode, no extra dependency,
+  and it works wherever there is a terminal.
 
 ## Terminal restoration
 
