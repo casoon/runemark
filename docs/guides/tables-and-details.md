@@ -37,8 +37,8 @@ assert_eq!(
   column has one, and `Align::Right` for numbers. A row longer than the declared columns adds
   left-aligned columns.
 - **Cells carry a tone and a badge.** `Cell::with_tone` paints the text, `Cell::with_badge` appends
-  a `[label]` after it. Both disappear with colour: the badge's brackets and label stay, so
-  `[locked]` still reads in a pipe.
+  a `[label]` after it. Without colour the tone is gone, but the badge keeps its brackets and
+  label, so `[locked]` still reads in a pipe.
 - **No trailing spaces.** A line ends at its last visible cell, so plain output compares cleanly
   in golden tests; see [Testing](../testing/).
 - **Cells are one line.** Control characters are neutralised as everywhere else, and a newline or
