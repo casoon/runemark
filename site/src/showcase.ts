@@ -122,6 +122,8 @@ export const ansi = {
   'report-narrow': report(narrow, 44),
   'error-block': renderError(missingToolchain, colour),
   'file-changes': renderDiff(generated, colour),
+  // The same call with colour off, as a pipe or NO_COLOR sees it.
+  'error-block-plain': renderError(missingToolchain, { color: 'never' }),
 };
 
 const examples_: Array<Omit<ShowcaseExample, 'output'> & { slug: keyof typeof ansi }> = [

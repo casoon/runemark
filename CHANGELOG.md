@@ -9,14 +9,15 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ### Added
 
-- **Select:** `Menu::with_wrapped_descriptions` wraps long descriptions onto continuation lines
-  under the first instead of shortening them. It only applies while the whole menu still fits the
-  terminal's height; a taller menu keeps shortening and scrolling as before, and `Menu::render`
-  never wraps.
+- **Select:** `Menu::with_wrapped_descriptions` wraps long descriptions under the first line
+  instead of shortening them, as long as the whole menu still fits the terminal. Details:
+  [Terminals smaller than the menu](https://casoon.github.io/runemark/docs/guides/selection/#terminals-smaller-than-the-menu).
 
 ### Changed
 
 - **Pages:** the project site uses the current shared theme (0.19.0).
+- **Site:** the start page walks through the four output shapes, shows how data becomes output,
+  compares the same error block in a terminal and in a pipe, and lists the supported platforms.
 - **Docs:** the README and the start page cover independent colour, symbol and hyperlink
   settings, the configurable details hint, the menu's navigation keys and the test helpers.
 - **Contributors:** the hero recording is rendered with castwright 0.6.0.
