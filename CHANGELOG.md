@@ -7,6 +7,23 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+### Added
+
+- **Table:** `Table`, `Column`, `Cell` and `Align` lay out a flat listing in aligned columns,
+  measured by display width, with an optional header row, right-aligned columns and a tone or
+  `Badge` per cell. Details:
+  [Tables](https://casoon.github.io/runemark/docs/guides/tables-and-details/#tables).
+- **Details:** `KeyValues` prints key-value pairs with muted keys and aligned values, and
+  `Console::rule` and `Console::write_rule` draw a muted horizontal rule that follows the symbol
+  theme. Details:
+  [Key-value headers](https://casoon.github.io/runemark/docs/guides/tables-and-details/#key-value-headers).
+- **Confirm:** `Confirm` (`y/N`) and `Challenge` (a typed code) behind the `select` feature ask on
+  standard error and return `Answer::Unavailable` instead of reading an answer when stdin or
+  stderr is not a terminal. Details:
+  [Confirming an action](https://casoon.github.io/runemark/docs/guides/selection/#confirming-an-action).
+- **Docs:** a Tables and details guide, a Selection guide section on confirmations, and the
+  `confirm_demo` example.
+
 ### Fixed
 
 - **Releases:** the release build runs on Node 22. The cross toolchain that builds the Linux

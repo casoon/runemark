@@ -163,6 +163,30 @@ impl Console {
     pub fn paint(self, tone: Tone, value: impl Display) -> String {
         crate::internal::collect_to_string(|buf| self.write_paint(tone, &value, buf))
     }
+
+    /// Writes a horizontal rule `width` columns wide, in the muted tone and with no
+    /// trailing newline.
+    ///
+    /// The rule is `─` for the Unicode theme and `-` for the ASCII theme, so it
+    /// follows [`Console::with_theme`] and degrades with the colour decision. A width
+    /// of zero writes nothing.
+    pub fn write_rule(
+        self,
+        width: usize,
+        writer: &mut (impl Write + ?Sized),
+    ) -> std::io::Result<()> {
+        let glyph = match self.theme {
+            SymbolTheme::Unicode => "\u{2500}",
+            SymbolTheme::Ascii => "-",
+        };
+        self.write_paint(Tone::Muted, glyph.repeat(width), writer)
+    }
+
+    /// Renders a horizontal rule `width` columns wide into a String, with no
+    /// trailing newline. See [`Console::write_rule`].
+    pub fn rule(self, width: usize) -> String {
+        crate::internal::collect_to_string(|buf| self.write_rule(width, buf))
+    }
 }
 
 pub(crate) fn is_dangerous_control(ch: char) -> bool {
@@ -305,5 +329,21 @@ mod tests {
             console.paint(Tone::Info, formatted),
             "Line 1\n\tIndented Line 2^M\nDone"
         );
+    }
+
+    #[test]
+    fn rule_follows_the_symbol_theme() {
+        let unicode = Console::new(ColorMode::Never, false).with_theme(SymbolTheme::Unicode);
+        assert_eq!(unicode.rule(4), "\u{2500}\u{2500}\u{2500}\u{2500}");
+        let ascii = Console::new(ColorMode::Never, false);
+        assert_eq!(ascii.rule(4), "----");
+    }
+
+    #[test]
+    fn rule_of_zero_width_is_empty_and_colour_wraps_it_once() {
+        let plain = Console::new(ColorMode::Never, false);
+        assert_eq!(plain.rule(0), "");
+        let coloured = Console::new(ColorMode::Always, false);
+        assert_eq!(coloured.rule(3), "\x1b[2m\u{2500}\u{2500}\u{2500}\x1b[0m");
     }
 }

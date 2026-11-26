@@ -43,3 +43,10 @@ pub(crate) fn write_toned_suffix(
     write!(writer, " ")?;
     console.write_paint(tone, text, writer)
 }
+
+/// Makes `text` safe and single-line for a column layout: control characters are
+/// neutralised like everywhere else, and a newline or tab becomes a space so a cell
+/// can never break its row or throw off the measured width.
+pub(crate) fn single_line(text: &str) -> String {
+    crate::color::sanitize_visible_text(text).replace(['\n', '\t'], " ")
+}

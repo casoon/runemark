@@ -14,8 +14,10 @@ order: 1
 | Reports | `Report`, `RenderOptions`, `DetailLevel`, `Metric`, `Trend`, `FindingGroup`, `Finding`, `Badge`, `Confidence`, `NextStep`, `ScopeNote`, `Vocabulary` |
 | Locations | `Location`, `format_osc8` |
 | Errors and file changes | `ErrorBlock`, `DiffBlock`, `FileChange`, `FileAction` |
+| Tables and details | `Table`, `Column`, `Cell`, `Align`, `KeyValues`; `Console::rule` and `Console::write_rule` (Rust only) |
 | Progress | `ProgressSink`, `PlainProgress`, `SilentProgress`, `ProgressMode`, `TerminalProgress`; `IndicatifProgress` (feature `progress`) |
 | Selection | `Menu`, `Group`, `Item`, `Hint`, `Layout`, `Outcome`, `Picked`, `SelectMode`; `Menu::run` and `Menu::run_multi` need feature `select` (Unix) |
+| Confirmation | `Confirm`, `Challenge`, `Answer` (feature `select`; Rust only) |
 | Testing helpers | module `testing`: `strip_ansi`, `assert_plain_snapshot!` |
 
 `TerminalProgress` is always available; without the `progress` feature it writes plain lifecycle

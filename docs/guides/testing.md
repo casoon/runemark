@@ -1,7 +1,7 @@
 ---
 title: Testing
 description: Golden-test your CLI's output with plain rendering, strip_ansi and assert_plain_snapshot!.
-order: 6
+order: 7
 ---
 
 Output that is identical for identical input is easy to test. Two things keep it that way: render

@@ -11,20 +11,27 @@
 #![warn(missing_docs)]
 
 pub mod color;
+#[cfg(feature = "select")]
+pub mod confirm;
 pub mod diff;
 pub mod error_block;
 mod internal;
+pub mod key_value;
 pub mod location;
 pub mod progress;
 pub mod report;
 // Temporary: the selection API still lacks item docs (#40); remove once documented.
 pub mod select;
+pub mod table;
 pub mod testing;
 pub mod verdict;
 
 pub use color::{ColorMode, Console, SymbolTheme, Tone};
+#[cfg(feature = "select")]
+pub use confirm::{Answer, Challenge, Confirm};
 pub use diff::{DiffBlock, FileAction, FileChange};
 pub use error_block::ErrorBlock;
+pub use key_value::KeyValues;
 pub use location::{Location, format_osc8};
 pub use progress::{PlainProgress, ProgressMode, ProgressSink, SilentProgress, TerminalProgress};
 pub use report::{
@@ -32,6 +39,7 @@ pub use report::{
     ScopeNote, Trend, Vocabulary,
 };
 pub use select::{Group, Hint, Item, Layout, Menu, Outcome, Picked, SelectMode};
+pub use table::{Align, Cell, Column, Table};
 pub use verdict::Verdict;
 
 // Compile the README and the guide samples as doctests. The guides these include are
@@ -53,6 +61,8 @@ mod guide_doctests {
     struct Progress;
     #[doc = include_str!("../docs/guides/reports.mdx")]
     struct Reports;
+    #[doc = include_str!("../docs/guides/tables-and-details.md")]
+    struct TablesAndDetails;
     #[doc = include_str!("../docs/guides/testing.md")]
     struct Testing;
 }

@@ -1,7 +1,7 @@
 ---
 title: Progress
 description: A progress lifecycle for long-running work that keeps redirected output clean.
-order: 4
+order: 5
 ---
 
 A progress run has four steps: `start` with a total, `advance` with the current position, optional
