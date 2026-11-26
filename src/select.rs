@@ -911,6 +911,7 @@ impl Menu {
 
     /// Columns a description may use beside its label, or `None` when it is
     /// dropped for lack of room.
+    #[cfg(any(all(feature = "select", unix), test))]
     fn description_room(&self, view: View<'_>, columns: usize) -> Option<usize> {
         let width = self
             .label_width(view)
@@ -919,7 +920,7 @@ impl Menu {
         (room >= MIN_DESCRIPTION).then_some(room)
     }
 
-    #[cfg(any(all(feature = "select", unix), test))]
+    #[cfg(all(feature = "select", unix))]
     fn wraps_descriptions(&self) -> bool {
         self.wrap_descriptions
     }

@@ -296,6 +296,21 @@ description spilling to column zero is what makes a long list unreadable in the 
 Where the label column leaves too little room for a description to say anything, the
 description is left out instead of cut to a stub.
 
+`Menu::with_wrapped_descriptions` lets long descriptions wrap instead, onto continuation lines
+aligned under the first. It applies only while the whole menu, wrapped, still fits the
+terminal's height; a taller menu falls back to shortening and scrolls by whole rows, so the
+scroll window never depends on how a description wraps.
+
+```rust
+# use runemark::{Group, Item, Menu};
+let menu = Menu::new()
+    .with_wrapped_descriptions()
+    .add_group(Group::new("Release").add_item(
+        Item::new("publish", "publish")
+            .with_description("Build every package, tag the release and push it to the registry"),
+    ));
+```
+
 A menu taller than the terminal is windowed: the body scrolls, and `↑ N more` / `↓ N more`
 mark what is out of view. `Layout::Tabs` is the other answer to the same problem, for a list
 whose groups mean something: it pages by group instead of scrolling past every one of them. The window moves the least amount that keeps the cursor visible, so
