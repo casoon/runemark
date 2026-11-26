@@ -7,6 +7,8 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-26
+
 ### Added
 
 - **Table:** `Table`, `Column`, `Cell` and `Align` lay out a flat listing in aligned columns,
