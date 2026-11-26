@@ -4,18 +4,20 @@ import { join, resolve } from 'node:path';
 import {
   Badge,
   Badges,
-  BuildOutput,
   CallToAction,
   CodeBlock,
-  Facts,
   Faq,
   Features,
+  Flow,
   Hero,
   Install,
+  Integrations,
   Quickstart,
   ReleaseHighlights,
   Spotlight,
+  StatBand,
   Terminal,
+  Tour,
 } from '@casoon/pages-theme/components';
 import Base from '@casoon/pages-theme/layouts/Base.astro';
 import config from 'virtual:casoon-pages/config';
@@ -76,8 +78,7 @@ process.stdout.write(renderReport({
     />
     <Badges>
       <Badge>MIT</Badge>
-      <Badge>crates.io</Badge>
-      <Badge>npm</Badge>
+      <Badge>crates.io {config.version}</Badge>
       <Badge>Rust {rustVersion}+</Badge>
       <Badge>Node {nodeVersion}+</Badge>
     </Badges>
@@ -91,7 +92,7 @@ process.stdout.write(renderReport({
     />
   </Hero>
 
-  <Facts
+  <StatBand
     items={[
       { value: '1', label: 'required dependency (unicode-width)' },
       { value: String(nodePlatforms), label: 'prebuilt Node platforms' },
@@ -100,54 +101,150 @@ process.stdout.write(renderReport({
     ]}
   />
 
+  <Tour
+    id="shapes"
+    eyebrow="What it renders"
+    title="Say what a line means. runemark draws it."
+    lead="Four shapes cover what a command-line tool reports back. **Every terminal on this page is rendered by @casoon/runemark during the build** – the same Rust code as the crate, not a screenshot."
+    steps={[
+      {
+        title: 'Status lines',
+        body: 'Six verdicts, each with its own symbol and tone: passed, warning, failed, action required, skipped, info.',
+      },
+      {
+        title: 'Reports',
+        body: 'A verdict, summary metrics with trends, grouped findings with locations, and next steps. Compact by default.',
+      },
+      {
+        title: 'Error blocks',
+        body: 'What went wrong, why, and the command that fixes it – instead of a bare error string.',
+      },
+      {
+        title: 'File changes',
+        body: 'Added, modified, renamed and deleted files as a preview, before or after your tool writes them.',
+      },
+    ]}
+    link={{ label: 'All examples', href: url('showcase/') }}
+  >
+    <div slot="step-1"><Terminal title="status" dots ansi={ansi.verdicts} /></div>
+    <div slot="step-2"><Terminal title="report" dots ansi={ansi['report-compact']} /></div>
+    <div slot="step-3"><Terminal title="error" dots ansi={ansi['error-block']} /></div>
+    <div slot="step-4"><Terminal title="diff" dots ansi={ansi['file-changes']} /></div>
+  </Tour>
+
+  <Flow
+    eyebrow="How it works"
+    title="Your data in, the right output out"
+    lead="runemark sits between your tool's own types and the stream it writes to. It decides how a line looks – never what it says."
+    stages={[
+      {
+        label: 'Input',
+        artifact: 'Report::new(…)',
+        title: 'Your data',
+        body: 'Findings, metrics and next steps come from your own types. runemark defines no domain model.',
+      },
+      {
+        label: 'Decide',
+        artifact: 'ColorMode::Auto',
+        title: 'One policy',
+        body: 'The console checks for a terminal, `NO_COLOR` and `TERM=dumb`, then sets colour, symbols and links.',
+      },
+      {
+        label: 'Render',
+        artifact: 'crate · napi',
+        title: 'One renderer',
+        body: 'The Rust crate and the npm package call the same code, so their bytes match.',
+      },
+      {
+        label: 'Output',
+        artifact: 'stdout · stderr',
+        title: 'Any destination',
+        body: 'Styled in a terminal, plain and deterministic in a pipe, a log or a snapshot test.',
+      },
+    ]}
+  />
+
+  <Spotlight
+    eyebrow="Colour policy"
+    title="Same call, every destination"
+    lead="**Colour is a property of the destination, not of the message.** `Auto` styles output only for an interactive terminal; piped, under `NO_COLOR` or with `TERM=dumb` the same call writes plain text."
+    points={[
+      "**Verdict symbols survive without colour.** A failure still reads as a failure in a CI log – ASCII marks replace the Unicode ones.",
+      '**Colour, symbols and hyperlinks** follow one decision by default and can each be overridden.',
+      '**Deterministic by construction.** Identical input always gives identical bytes, so output can be committed as a fixture and diffed.',
+    ]}
+    links={[
+      { label: 'Colour policy', href: url('docs/guides/colour-policy/') },
+      { label: 'Testing', href: url('docs/guides/testing/') },
+    ]}
+  >
+    <div class="pair">
+      <Terminal title="terminal" dots ansi={ansi['error-block']} />
+      <Terminal title="| cat" dots ansi={ansi['error-block-plain']} />
+    </div>
+  </Spotlight>
+
+  <Spotlight
+    reverse
+    eyebrow="Adaptive layout"
+    title="One report, any width"
+    lead="**Reports adapt to the terminal they're given, not to a fixed layout.** Pass a known width and narrow terminals stack summary metrics and wrap finding messages with a hanging indent instead of truncating."
+    points={[
+      '**Compact or detailed, same data.** The host CLI chooses the detail level; compact output says how many findings it left out, and your tool words the pointer to the rest.',
+      '**No terminal access needed.** Your tool passes the width it knows; runemark never queries the terminal behind your back.',
+    ]}
+    links={[{ label: 'Reports guide', href: url('docs/guides/reports/') }]}
+  >
+    <Terminal title="44 columns" dots ansi={ansi['report-narrow']} />
+  </Spotlight>
+
   <Features
+    layout="grid"
+    heading="Built for tools other people run"
     items={[
       {
+        icon: 'S',
         title: 'Semantic, not cosmetic',
         body: 'Callers say what a line means – success, warning, error, a verdict, a finding. runemark decides how it looks, so related tools read the same.',
       },
       {
-        title: 'Predictable colour policy',
-        body: 'Auto emits styles only to an interactive terminal, honours NO_COLOR and stays plain for TERM=dumb; Always and Never are explicit. Colour, symbols and hyperlinks can each be set on their own. Redirected output stays plain and deterministic.',
+        icon: 'P',
+        title: 'Progress that stays out of pipes',
+        body: 'A live bar on an interactive terminal, a compact line-oriented lifecycle everywhere else, so machine-readable stdout stays clean.',
       },
       {
-        title: 'Reports that fit the terminal',
-        body: 'Compact or detailed, with metrics, grouped findings and next steps. Given a width, narrow layouts stack metrics and wrap messages with a hanging indent.',
-      },
-      {
+        icon: 'M',
         title: 'Menus when a prompt is not enough',
-        body: 'An optional grouped menu with filtering, tabs and multi-pick for Unix terminals. It redraws on resize, never blocks without a terminal, and hands you a plain rendering to print instead.',
+        body: 'An optional grouped menu with filtering, tabs and multi-pick for Unix terminals. It redraws on resize and never blocks without a terminal.',
       },
       {
+        icon: 'T',
+        title: 'Golden tests in a few lines',
+        body: 'Renderers write to any writer; strip_ansi and assert_plain_snapshot! compare plain output against an expected block.',
+      },
+      {
+        icon: 'L',
+        title: 'Locations you can click',
+        body: 'File paths with line and column, and URLs, become OSC 8 hyperlinks in terminals that support them – and plain text everywhere else.',
+      },
+      {
+        icon: '!',
         title: 'Safe with untrusted text',
         body: 'Control characters in messages, paths and URLs are neutralised; hyperlinks are only emitted for http and https URLs and for file paths the tool resolves itself.',
       },
     ]}
   />
 
-  <Spotlight
-    eyebrow="How it renders"
-    title="One report, any width"
-    lead="**Reports adapt to the terminal they're given, not to a fixed layout.** Pass a known width and narrow terminals stack summary metrics and wrap finding messages with a hanging indent instead of truncating."
-    points={[
-      "**Verdict symbols survive NO_COLOR.** A tone disappears without color; the verdict's own symbol does not — a failing metric still reads as failing piped to a file.",
-      '**Compact or detailed, same data.** The host CLI chooses `detailLevel`; runemark never asks for two separate report shapes. Compact output says how many findings it left out, and your tool words the pointer to the rest.',
-      '**Determinism by construction.** Identical input always walks the same path — no timing-dependent output, so fixtures can be committed and diffed.',
+  <Integrations
+    heading="Where it runs"
+    items={[
+      { icon: 'rs', name: 'Rust crate', category: `crates.io · Rust ${rustVersion}+`, href: 'https://crates.io/crates/runemark' },
+      { icon: 'npm', name: 'Node package', category: `npm · Node ${nodeVersion}+ · types included`, href: 'https://www.npmjs.com/package/@casoon/runemark' },
+      { icon: 'mac', name: 'macOS', category: 'Apple silicon · prebuilt' },
+      { icon: 'lnx', name: 'Linux', category: 'x64 and arm64, glibc and musl · prebuilt' },
+      { icon: 'win', name: 'Windows', category: 'x64 · prebuilt; the menu is Unix-only' },
     ]}
-    links={[
-      { label: 'Reports guide', href: url('docs/guides/reports/') },
-      { label: 'Colour policy', href: url('docs/guides/colour-policy/') },
-    ]}
-  >
-    <Terminal title="44 columns" dots ansi={ansi['report-narrow']} />
-  </Spotlight>
-
-  <BuildOutput
-    caption="These terminals and the ones in the showcase are rendered by @casoon/runemark during the build – the same renderer as the crate. Only the animation at the top is a recording, of the hero_demo example."
-    file="site/src/showcase.ts"
-  >
-    <Terminal ansi={ansi['report-detailed']} />
-  </BuildOutput>
+  />
 
   <Quickstart
     lead="Three steps from install to consistent output. The full walkthrough lives in the documentation."
@@ -174,16 +271,8 @@ process.stdout.write(renderReport({
         a: 'Semantic output, color policy, reports and progress do. The optional select menu talks to the terminal directly through termios and is Unix-only — on Windows it reports Outcome::Unavailable and the caller falls back to render().',
       },
       {
-        q: 'What does output look like under NO_COLOR or when piped to a file?',
-        a: "Plain and deterministic. Tones disappear, but a verdict's own symbol stays, so a failing metric still reads as failing without color.",
-      },
-      {
         q: 'How do I test the output of my CLI?',
         a: 'Render with ColorMode::Never for deterministic text, or strip the escape sequences from a coloured string with strip_ansi. assert_plain_snapshot! compares the plain result against an expected block, and the Node package renders the same bytes.',
-      },
-      {
-        q: 'Can I turn off symbols or hyperlinks without turning off colour?',
-        a: 'Yes. Colour, the symbol set and OSC 8 hyperlinks follow one decision by default and can each be overridden: Console::with_theme chooses Unicode or ASCII symbols, Console::with_hyperlinks switches links.',
       },
       {
         q: 'Does runemark parse my CLI arguments or define my report data?',
@@ -205,5 +294,14 @@ process.stdout.write(renderReport({
     width: 100%;
     height: auto;
     border-radius: 10px;
+  }
+  .pair {
+    display: grid;
+    gap: 16px;
+  }
+  /* Links inside changelog entries need more than colour to stand out from the text. */
+  :global(.release-highlights li a) {
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 </style>
