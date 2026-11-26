@@ -74,9 +74,13 @@ jobs:
         with:
           toolchain: "1.88"
           targets: ${{ matrix.target }}
+      # The napi cross toolchain (--use-napi-cross) pulls in @napi-rs/lzma, which only loads on
+      # Node ^22.20 || ^24.12 || >=25. On Node 20 the build fails with "Cannot find native
+      # binding". The package itself still supports Node 20; the CI matrix and the container
+      # smoke tests below cover that.
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: packages/runemark/package-lock.json
       - name: Install dependencies
