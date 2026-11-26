@@ -7,6 +7,12 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Releases:** the release build runs on Node 22. The cross toolchain that builds the Linux
+  binaries needs `@napi-rs/lzma`, which does not load on Node 20, so the 0.11.0 release build
+  failed before it published any binaries.
+
 ## [0.11.0] - 2026-11-26
 
 ### Added
