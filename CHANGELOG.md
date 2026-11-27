@@ -7,6 +7,13 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+### Changed
+
+- **Releases:** the crate is published from the Release workflow through crates.io trusted
+  publishing, in the `crates-io` environment that waits for an approval, instead of by
+  `cargo publish` on a maintainer machine. No registry token is stored anywhere. Details:
+  [CONTRIBUTING](https://github.com/casoon/runemark/blob/main/CONTRIBUTING.md#releasing).
+
 ## [0.12.0] - 2026-11-27
 
 ### Added
