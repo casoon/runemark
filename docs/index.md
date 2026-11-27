@@ -16,6 +16,8 @@ owns layout, wrapping, symbols and the colour policy.
 - Error blocks, file-change previews and clickable locations in compatible terminals.
 - Progress for long-running work (the live bar is behind the optional `progress` feature in Rust).
 - Grouped, keyboard-driven selection (optional `select` feature in Rust, Unix only).
+- Tables, key-value headers and horizontal rules for listings and detail views (Rust).
+- Confirmation prompts, `y/N` or a typed code, that refuse to run without a terminal (optional `select` feature in Rust).
 
 ## Where it stops
 
@@ -31,8 +33,8 @@ owns layout, wrapping, symbols and the colour policy.
 
 - **Getting started**: [install](getting-started/installation/) the crate or the npm package and
   render a [first output](getting-started/quickstart/).
-- **Guides**: colour policy, reports, errors and diffs, progress, selection, testing, the Node
-  contract and the security model.
+- **Guides**: colour policy, reports, errors and diffs, progress, tables and details, selection
+  and confirmations, testing, the Node contract and the security model.
 - **Reference**: an [overview of the public API](reference/api/). Item-level documentation lives
   on [docs.rs](https://docs.rs/runemark).
 
