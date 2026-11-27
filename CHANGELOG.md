@@ -7,8 +7,12 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-27
+
 ### Changed
 
+- **Docs:** the docs start page and the installation page mention tables, key-value headers and
+  confirmation prompts.
 - **Releases:** the crate is published from the Release workflow through crates.io trusted
   publishing, in the `crates-io` environment that waits for an approval, instead of by
   `cargo publish` on a maintainer machine. No registry token is stored anywhere. Details:
