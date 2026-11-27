@@ -7,7 +7,7 @@ existing behaviour, and such entries are marked `Breaking`.
 
 ## [Unreleased]
 
-## [0.12.0] - 2026-11-26
+## [0.12.0] - 2026-11-27
 
 ### Added
 
